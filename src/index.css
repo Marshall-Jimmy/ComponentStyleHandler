@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============ 强制配色方案 ============ */
+:root {
+  /* 基础中性色 - 暖暗调 zinc 家族 */
+  --color-bg: #0b0b0c; /* 应用底色，非纯黑，带一丝暖意 */
+  --color-surface-1: #151412; /* 卡片/侧边栏，比底色略亮 */
+  --color-surface-2: #1f1d1a; /* 悬浮卡片/模态框，再亮一级 */
+  --color-surface-3: #2a2723; /* hover/激活态，再亮一级 */
+  --color-border: #262320; /* 暖调发丝级边框，非冷灰 */
+  --color-border-strong: #3a3631; /* 强调边框 */
+
+  /* 文字系统 */
+  --color-text-primary: #f7f3ea; /* 离白，柔和于纯白 */
+  --color-text-secondary: #a8a29a; /* 暖调次级文字 */
+  --color-text-tertiary: #6b6660; /* 三级文字/禁用态 */
+  --color-text-on-accent: #0b0b0c; /* 强调色上的文字，用底色 */
+
+  /* 强调色 - 低饱和暖调，在暗底上自然发光 */
+  --color-accent: #e6b450; /* 主强调：温暖琥珀金 */
+  --color-accent-hover: #f0c36a; /* 强调 hover */
+  --color-accent-soft: rgba(230, 180, 80, 0.12); /* 强调色 12% 透明，用于 glow/背景 */
+
+  /* 功能色 - 全部为暗底优化的低饱和版本 */
+  --color-success: #34d399; /* 成功态，emerald 提亮版 */
+  --color-warning: #fbbf24; /* 警告态，amber */
+  --color-danger: #f87171; /* 错误态，red 提亮版 */
+  --color-info: #22d3ee; /* 信息态，cyan */
+
+  /* 焦点环 - 必须 3:1 对比度 */
+  --color-focus: #e6b450; /* 用强调色做焦点环 */
+
+  /* 阴影 - 暗模式下用"带强调色倾向的阴影"替代纯黑阴影 */
+  --shadow-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-elevation-2: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-glow-accent: 0 0 0 1px var(--color-accent-soft), 0 4px 24px rgba(230, 180, 80, 0.08);
+
+  /* 字体 */
+  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+/* ============ 基础样式 ============ */
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: clamp(14px, 0.875rem + 0.2vw, 16px);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 自定义滚动条：薄条，滑块为主色 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-accent);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-hover);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-accent) transparent;
+}
+
+/* 焦点可见 */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* 文本选区 */
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-text-primary);
+}
+
+/* 尊重系统减少动画设置 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
