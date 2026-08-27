@@ -30,14 +30,15 @@ export function CardWall({
             gridTemplateColumns: `repeat(auto-fill, minmax(${GRID.minColumnWidth}px, 1fr))`,
           }}
         >
-          {components.map((c) => (
-            <ComponentCard
-              key={c.id}
-              component={c}
-              onCopy={onCopy}
-              onEdit={onEdit}
-              onDelete={onDelete}
-            />
+          {components.map((c, i) => (
+            <div key={c.id} className="card-enter" style={{ ['--i' as string]: Math.min(i, 12) }}>
+              <ComponentCard
+                component={c}
+                onCopy={onCopy}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
+            </div>
           ))}
         </div>
       )}

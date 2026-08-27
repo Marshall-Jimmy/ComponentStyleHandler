@@ -82,7 +82,7 @@ export function SettingsModal({
           <h2 className="text-base font-semibold text-primary">设置</h2>
           <button
             type="button"
-            className="grid h-8 w-8 place-items-center rounded-lg text-tertiary transition-colors hover:bg-surface3 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
+            className="micro-icon-btn grid h-8 w-8 place-items-center text-tertiary hover:bg-surface3 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
             onClick={onClose}
             aria-label="关闭设置"
           >
@@ -104,7 +104,7 @@ export function SettingsModal({
                   type="button"
                   onClick={() => update({ provider: p })}
                   aria-pressed={keys.provider === p}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-focus ${
+                  className={`micro-btn flex-1 border px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-focus ${
                     keys.provider === p
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-border bg-surface1 text-secondary hover:border-borderStrong'
@@ -140,7 +140,7 @@ export function SettingsModal({
               <button
                 type="button"
                 onClick={handleExport}
-                className="flex items-center gap-1.5 rounded-lg border border-border bg-surface1 px-3 py-2 text-xs text-secondary transition-colors hover:border-accent/50 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
+                className="micro-btn flex items-center gap-1.5 border border-border bg-surface1 px-3 py-2 text-xs text-secondary hover:border-accent/50 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
               >
                 <DownloadIcon size={14} />
                 导出数据
@@ -148,7 +148,7 @@ export function SettingsModal({
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="flex items-center gap-1.5 rounded-lg border border-border bg-surface1 px-3 py-2 text-xs text-secondary transition-colors hover:border-accent/50 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
+                className="micro-btn flex items-center gap-1.5 border border-border bg-surface1 px-3 py-2 text-xs text-secondary hover:border-accent/50 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
               >
                 <UploadIcon size={14} />
                 导入数据
@@ -167,7 +167,7 @@ export function SettingsModal({
               <button
                 type="button"
                 onClick={handleReset}
-                className="flex items-center gap-1.5 rounded-lg border border-border bg-surface1 px-3 py-2 text-xs text-secondary transition-colors hover:border-danger/50 hover:text-danger focus-visible:outline-2 focus-visible:outline-focus"
+                className="micro-btn flex items-center gap-1.5 border border-border bg-surface1 px-3 py-2 text-xs text-secondary hover:border-danger/50 hover:text-danger focus-visible:outline-2 focus-visible:outline-focus"
               >
                 <RefreshIcon size={14} />
                 重置数据库

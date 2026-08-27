@@ -35,7 +35,7 @@ export function PlusIcon({ size = 24, ...rest }: IconProps) {
 export function CopyIcon({ size = 24, ...rest }: IconProps) {
   return (
     <svg {...base(size)} {...rest}>
-      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <rect x="9" y="9" width="11" height="11" />
       <path d="M5 15V5a2 2 0 0 1 2-2h10" />
     </svg>
   );
@@ -97,6 +97,22 @@ export function CloseIcon({ size = 24, ...rest }: IconProps) {
   return (
     <svg {...base(size)} {...rest}>
       <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+export function MaximizeIcon({ size = 24, ...rest }: IconProps) {
+  return (
+    <svg {...base(size)} {...rest}>
+      <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
+    </svg>
+  );
+}
+
+export function MinimizeIcon({ size = 24, ...rest }: IconProps) {
+  return (
+    <svg {...base(size)} {...rest}>
+      <path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" />
     </svg>
   );
 }
@@ -233,7 +249,7 @@ export function LinkIcon({ size = 24, ...rest }: IconProps) {
 export function TerminalIcon({ size = 24, ...rest }: IconProps) {
   return (
     <svg {...base(size)} {...rest}>
-      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <rect x="2" y="4" width="20" height="16" />
       <path d="m6 9 3 3-3 3M11 15h5" />
     </svg>
   );

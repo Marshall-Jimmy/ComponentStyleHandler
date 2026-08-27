@@ -13,13 +13,18 @@ interface ComponentCardProps {
 export function ComponentCard({ component, onCopy, onEdit, onDelete }: ComponentCardProps) {
   return (
     <article
-      className="group flex flex-col gap-3 rounded-2xl border border-border bg-surface1 p-4 shadow-elevation1 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] hover:-translate-y-1 hover:border-borderStrong hover:shadow-elevation2"
-      style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 320px' }}
+      className="micro-card group relative flex flex-col gap-3 border border-border bg-surface1 p-4 shadow-elevation1"
+      style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 392px', height: 392 }}
     >
+      {/* hover 顶部琥珀强调线 */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/70 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+      />
       <LivePreview component={component} />
 
       {/* 元信息栏 */}
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex min-h-0 flex-1 items-start justify-between gap-2 overflow-hidden">
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-medium text-primary" title={component.name}>
             {component.name}
@@ -42,7 +47,7 @@ export function ComponentCard({ component, onCopy, onEdit, onDelete }: Component
             href={component.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-tertiary transition-colors hover:bg-surface3 hover:text-accent focus-visible:outline-2 focus-visible:outline-focus"
+            className="micro-icon-btn mt-0.5 grid h-7 w-7 shrink-0 place-items-center text-tertiary hover:bg-surface3 hover:text-accent focus-visible:outline-2 focus-visible:outline-focus"
             aria-label={`打开来源链接 ${component.name}`}
             title={component.url}
           >
@@ -55,16 +60,19 @@ export function ComponentCard({ component, onCopy, onEdit, onDelete }: Component
       <div className="flex items-center gap-1 border-t border-border pt-3">
         <button
           type="button"
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs text-secondary transition-colors hover:bg-surface3 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
+          className="micro-btn group/copy flex flex-1 items-center justify-center gap-1.5 py-1.5 text-xs text-secondary hover:bg-surface3 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
           onClick={() => onCopy(component)}
           aria-label={`复制 ${component.name} 代码`}
         >
-          <CopyIcon size={15} />
+          <CopyIcon
+            size={15}
+            className="transition-transform duration-300 group-hover/copy:-translate-y-px group-hover/copy:scale-110"
+          />
           复制
         </button>
         <button
           type="button"
-          className="grid h-8 w-8 place-items-center rounded-lg text-secondary transition-colors hover:bg-surface3 hover:text-accent focus-visible:outline-2 focus-visible:outline-focus"
+          className="micro-icon-btn grid h-8 w-8 place-items-center text-secondary hover:bg-surface3 hover:text-accent focus-visible:outline-2 focus-visible:outline-focus"
           onClick={() => onEdit(component)}
           aria-label={`编辑 ${component.name}`}
         >
@@ -72,7 +80,7 @@ export function ComponentCard({ component, onCopy, onEdit, onDelete }: Component
         </button>
         <button
           type="button"
-          className="grid h-8 w-8 place-items-center rounded-lg text-secondary transition-colors hover:bg-surface3 hover:text-danger focus-visible:outline-2 focus-visible:outline-focus"
+          className="micro-icon-btn grid h-8 w-8 place-items-center text-secondary hover:bg-surface3 hover:text-danger focus-visible:outline-2 focus-visible:outline-focus"
           onClick={() => onDelete(component)}
           aria-label={`删除 ${component.name}`}
         >

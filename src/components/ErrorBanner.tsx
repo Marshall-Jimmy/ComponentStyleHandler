@@ -19,7 +19,7 @@ export function ErrorBanner({ message, onReload, onDismiss }: ErrorBannerProps) 
       <span className="min-w-0 flex-1 truncate">{message}</span>
       <button
         type="button"
-        className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface3 px-2.5 py-1.5 text-xs text-primary transition-colors hover:border-borderStrong focus-visible:outline-2 focus-visible:outline-focus"
+        className="micro-btn flex shrink-0 items-center gap-1.5 border border-border bg-surface3 px-2.5 py-1.5 text-xs text-primary hover:border-borderStrong focus-visible:outline-2 focus-visible:outline-focus"
         onClick={onReload}
       >
         <RefreshIcon size={14} />
@@ -27,7 +27,7 @@ export function ErrorBanner({ message, onReload, onDismiss }: ErrorBannerProps) 
       </button>
       <button
         type="button"
-        className="shrink-0 grid h-6 w-6 place-items-center rounded text-tertiary transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
+        className="micro-icon-btn grid h-6 w-6 shrink-0 place-items-center text-tertiary hover:bg-surface3 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
         onClick={onDismiss}
         aria-label="关闭错误提示"
       >

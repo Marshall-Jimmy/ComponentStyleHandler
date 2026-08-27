@@ -6,6 +6,8 @@ import {
   type BiliVideoInfo,
 } from '../utils/bilibili';
 import type { ParsedLink } from '../types';
+import { ActivityFeed } from './ActivityFeed';
+import { useActivity } from '../hooks/useActivity';
 import { SpinnerIcon, ExternalLinkIcon, LinkIcon, AlertTriangleIcon, CheckIcon } from '../utils/icons';
 
 interface BilibiliParserProps {
@@ -16,14 +18,16 @@ interface BilibiliParserProps {
 
 type Stage = 'idle' | 'parsing' | 'links' | 'fetching' | 'done' | 'error';
 
-/** B 站链接解析面板：粘贴 B 站链接后自动解析并展示候选链接 */
+/** B 站链接解析面板：粘贴 B 站链接后自动解析并展示候选链接，过程透明展示 */
 export function BilibiliParser({ url, onCodeFetched, onError }: BilibiliParserProps) {
   const [stage, setStage] = useState<Stage>('idle');
   const [info, setInfo] = useState<BiliVideoInfo | null>(null);
   const [links, setLinks] = useState<ParsedLink[]>([]);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
+  const { items, advance, complete, markError, reset } = useActivity();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelRef = useRef(false);
 
   // 输入变化后防抖触发解析
   useEffect(() => {
@@ -34,22 +38,31 @@ export function BilibiliParser({ url, onCodeFetched, onError }: BilibiliParserPr
       setInfo(null);
       return;
     }
+    reset();
     setStage('parsing');
+    cancelRef.current = false;
     timerRef.current = setTimeout(async () => {
       try {
-        const result = await parseBilibili(url);
+        const result = await parseBilibili(url, advance);
+        if (cancelRef.current) return;
         setInfo(result.info);
         setLinks(result.links);
         setStage(result.links.length > 0 ? 'links' : 'done');
-        if (result.links.length === 0) {
+        if (result.links.length > 0) {
+          complete(`发现 ${result.links.length} 个代码/网盘链接`);
+        } else {
+          complete('未在简介或评论中发现链接');
           onError('未在简介或评论中发现代码/网盘链接');
         }
       } catch (err) {
-        setStage('error');
+        if (cancelRef.current) return;
+        markError(err instanceof Error ? err.message : '解析失败');
         setError(err instanceof Error ? err.message : '解析失败');
+        setStage('error');
       }
     }, 600);
     return () => {
+      cancelRef.current = true;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -59,11 +72,14 @@ export function BilibiliParser({ url, onCodeFetched, onError }: BilibiliParserPr
   const handleSelect = async (link: ParsedLink) => {
     setSelected(link.url);
     setStage('fetching');
+    reset();
     try {
-      const code = await fetchCodeFromLink(link);
+      const code = await fetchCodeFromLink(link, advance);
       onCodeFetched(code.html, code.css, code.js);
+      complete('代码已填入编辑器');
       setStage('done');
     } catch (err) {
+      markError(err instanceof Error ? err.message : '抓取失败');
       setStage('links');
       setSelected(null);
       onError(err instanceof Error ? err.message : '抓取失败');
@@ -76,6 +92,7 @@ export function BilibiliParser({ url, onCodeFetched, onError }: BilibiliParserPr
 
   return (
     <div className="space-y-2 rounded-lg border border-border bg-bg p-3 animate-fadeIn">
+      <ActivityFeed items={items} />
       {stage === 'parsing' && (
         <div className="flex items-center gap-2 text-sm text-secondary">
           <span className="animate-spin text-accent">
@@ -99,7 +116,7 @@ export function BilibiliParser({ url, onCodeFetched, onError }: BilibiliParserPr
                 type="button"
                 disabled={isFetching}
                 onClick={() => handleSelect(link)}
-                className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left text-xs transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-focus ${
+                className={`micro-item flex w-full items-center gap-2 border px-2.5 py-2 text-left text-xs disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-focus ${
                   selected === link.url
                     ? 'border-accent/60 bg-accent-soft'
                     : 'border-border bg-surface1 hover:border-accent/50'

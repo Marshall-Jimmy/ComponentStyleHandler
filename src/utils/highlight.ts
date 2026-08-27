@@ -49,10 +49,17 @@ async function ensureLanguage(lang: string): Promise<void> {
 
 const SUPPORTED = ['xml', 'css', 'javascript', 'typescript'];
 
+/** 超过该长度跳过 highlight.js 高亮，避免超大文本卡顿 */
+const MAX_HIGHLIGHT_LENGTH = 50_000;
+
 /** 高亮代码，返回 HTML 字符串 */
 export async function highlightCode(code: string, lang: string): Promise<string> {
   const safeLang = SUPPORTED.includes(lang) ? lang : 'plaintext';
   if (safeLang === 'plaintext' || !code.trim()) {
+    return escapeHtml(code);
+  }
+  // 大文本直接返回纯文本，不加载高亮引擎（highlight.js 对大文本极慢）
+  if (code.length > MAX_HIGHLIGHT_LENGTH) {
     return escapeHtml(code);
   }
   await ensureLanguage(safeLang);

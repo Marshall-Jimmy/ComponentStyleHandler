@@ -13,7 +13,7 @@ interface SidebarProps {
 export function Sidebar({ components, activeTag, onSelectTag, totalCount }: SidebarProps) {
   return (
     <aside className="hidden w-60 shrink-0 lg:block">
-      <div className="sticky top-20 space-y-4 rounded-2xl border border-border bg-surface1 p-4">
+      <div className="micro-lift sticky top-20 space-y-4 border border-border bg-surface1 p-4">
         <div className="flex items-center gap-2">
           <span className="text-accent">
             <TagIcon size={16} />

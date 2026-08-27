@@ -33,13 +33,20 @@ export const GRID = {
 export const BILIBILI = {
   /** 视频信息 API */
   viewApi: 'https://api.bilibili.com/x/web-interface/view',
-  /** 热评 API */
-  replyApi: 'https://api.bilibili.com/x/v2/reply/main',
+  /** 热评 API（旧版 x/v2/reply 免 WBI 签名，风控更宽松） */
+  replyApi: 'https://api.bilibili.com/x/v2/reply',
   /** 热评数量 */
   replyCount: 20,
-  /** CORS 代理（备选） */
-  corsProxy: 'https://corsproxy.io/?url=',
+  /** 同源反向代理前缀（Vite dev/preview 已配置 /bili-api → api.bilibili.com，无 CORS 限制） */
+  proxyPrefix: '/bili-api',
 };
+
+/** CORS 代理链（备选降级，按序尝试） */
+export const CORS_PROXIES = [
+  'https://corsproxy.io/?url=',
+  'https://corsproxy.org/?',
+  'https://cors.eu.org/',
+];
 
 export const CODEPEN = {
   /** CodePen 解析 API（备选） */
@@ -49,6 +56,26 @@ export const CODEPEN = {
 export const GITHUB = {
   /** Gist API */
   gistApi: 'https://api.github.com/gists/',
+  /** raw 文件主机 */
+  rawHost: 'https://raw.githubusercontent.com',
+  /** Gist raw 主机 */
+  gistRawHost: 'https://gist.githubusercontent.com',
+  /** 镜像前缀：直连失败时拼接该前缀使用 gh-proxy.com 镜像 */
+  mirrorPrefix: 'https://gh-proxy.com/',
+};
+
+export const GITEE = {
+  /** Gitee API v5 基础地址 */
+  api: 'https://gitee.com/api/v5',
+  /** 同源反向代理前缀（Vite dev/preview 已配置 /gitee-api → gitee.com，无 CORS 限制） */
+  proxyPrefix: '/gitee-api',
+};
+
+export const GITLAB = {
+  /** GitLab 官方 API v4 基础地址（自托管实例按 host 动态计算） */
+  api: 'https://gitlab.com/api/v4',
+  /** 同源反向代理前缀（Vite dev/preview 已配置 /gitlab-api → gitlab.com，无 CORS 限制） */
+  proxyPrefix: '/gitlab-api',
 };
 
 export const AI = {
@@ -70,9 +97,13 @@ export const NETDISK_HOSTS = [
   'lanzn',
   'lanzouo',
   '123pan.com',
+  '123684.com',
+  '123912.com',
   'cowtransfer.com',
   'weiyun.com',
   'pan.xunlei.com',
+  'cloud.189.cn',
+  'yun.139.com',
 ];
 
 /** 代码托管站点识别列表 */
@@ -84,3 +115,21 @@ export const CODE_HOSTS = [
   'stackblitz.com',
   'codesandbox.io',
 ];
+
+/** 网盘直链解析端点 */
+export const NETDISK = {
+  /** NFD 第三方聚合解析服务（支持蓝奏/123/夸克/奶牛/移动云/小飞机等，CORS 已开启） */
+  qaiuParserApi: 'https://lz.qaiu.top/json/parser',
+  /** NFD 解析服务备用镜像 */
+  qaiuParserApiAlt: 'https://lz0.qaiu.top/json/parser',
+  /** NFD 文件夹文件列表 API */
+  qaiuFileListApi: 'https://lz.qaiu.top/v2/getFileList',
+  /** 阿里云盘匿名分享信息 API（浏览器端受 CORS 限制，仅作 best-effort） */
+  aliyunShareInfoApi: 'https://api.aliyundrive.com/adrive/v1.0/shareLink/getShareInfoByAnonymous',
+  /** 阿里云盘匿名分享令牌 API */
+  aliyunShareTokenApi: 'https://api.aliyundrive.com/adrive/v1.0/shareLink/getShareTokenByAnonymous',
+  /** 阿里云盘匿名文件列表 API */
+  aliyunShareFileApi: 'https://api.aliyundrive.com/adrive/v1.0/shareLink/getShareFileByAnonymous',
+  /** 阿里云盘匿名下载链接 API */
+  aliyunDownloadApi: 'https://api.aliyundrive.com/adrive/v1.0/shareLink/getShareLinkDownloadUrl',
+};

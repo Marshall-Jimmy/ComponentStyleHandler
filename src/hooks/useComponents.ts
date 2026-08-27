@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { db, resetDatabase, generateId } from '../db/database';
 import type { Component, ComponentDraft } from '../types';
 import { sanitizeHtml, sanitizeCss } from '../utils/sanitize';
+import { detectSourceTag } from '../utils/source';
 import { emitHook } from '../utils/events';
 import { SAMPLE_COMPONENTS } from '../samples';
 
@@ -63,14 +64,21 @@ export function useComponents() {
   const saveComponent = useCallback(
     async (draft: ComponentDraft, existing?: Component): Promise<Component> => {
       const now = Date.now();
+      const manualTags = draft.tags
+        .split(/[,，]/)
+        .map((t) => t.trim())
+        .filter(Boolean);
+      // 自动附加来源标签，让组件在「全部」与来源标签筛选下都能看到
+      const sourceTag = detectSourceTag(draft.url.trim());
+      const tags =
+        sourceTag && !manualTags.some((t) => t.toLowerCase() === sourceTag.toLowerCase())
+          ? [...manualTags, sourceTag]
+          : manualTags;
       const component: Component = {
         id: existing?.id ?? generateId(),
         name: draft.name.trim(),
         url: draft.url.trim() || undefined,
-        tags: draft.tags
-          .split(/[,，]/)
-          .map((t) => t.trim())
-          .filter(Boolean),
+        tags,
         html: sanitizeHtml(draft.html),
         css: sanitizeCss(draft.css),
         js: draft.js,

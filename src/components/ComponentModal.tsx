@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Component, ComponentDraft, ConvertTarget } from '../types';
 import { CodeEditor } from './CodeEditor';
-import { BilibiliParser } from './BilibiliParser';
+import { LinkParser } from './LinkParser';
 import {
   CloseIcon,
   SparklesIcon,
@@ -55,17 +55,18 @@ function SvgInput({
             y="0.5"
             width="100%"
             height="100%"
-            rx="10"
+            rx="0"
             fill="none"
             stroke="var(--color-border)"
             strokeWidth="1.5"
+            style={{ transition: 'opacity 0.2s ease', opacity: focused ? 0 : 1 }}
           />
           <rect
             x="0.5"
             y="0.5"
             width="100%"
             height="100%"
-            rx="10"
+            rx="0"
             fill="none"
             stroke="var(--color-accent)"
             strokeWidth="1.5"
@@ -82,7 +83,7 @@ function SvgInput({
           onBlur={() => setFocused(false)}
           placeholder={placeholder}
           required={required}
-          className="relative w-full rounded-[10px] bg-transparent px-3.5 py-2.5 text-sm text-primary placeholder:text-tertiary outline-none"
+          className="relative w-full bg-transparent px-3.5 py-2.5 text-sm text-primary placeholder:text-tertiary outline-none"
         />
       </div>
     </div>
@@ -227,7 +228,7 @@ export function ComponentModal({ open, initial, onClose, onSave, onToast }: Comp
           </h2>
           <button
             type="button"
-            className="grid h-8 w-8 place-items-center rounded-lg text-tertiary transition-colors hover:bg-surface3 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
+            className="micro-icon-btn grid h-8 w-8 place-items-center text-tertiary hover:bg-surface3 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
             onClick={onClose}
             aria-label="关闭"
           >
@@ -248,9 +249,9 @@ export function ComponentModal({ open, initial, onClose, onSave, onToast }: Comp
             label="来源 URL"
             value={draft.url}
             onChange={set('url')}
-            placeholder="粘贴 B 站视频链接可自动解析（支持 bilibili.com / b23.tv）"
+            placeholder="粘贴 GitHub / B 站 / 网盘 / CodePen 等链接自动解析"
           />
-          <BilibiliParser
+          <LinkParser
             url={draft.url}
             onCodeFetched={(html, css, js) =>
               setDraft((prev) => ({ ...prev, html, css, js }))
@@ -263,6 +264,9 @@ export function ComponentModal({ open, initial, onClose, onSave, onToast }: Comp
             onChange={set('tags')}
             placeholder="逗号分隔，例如：按钮, 渐变, hover"
           />
+          <p className="-mt-2 text-[11px] text-tertiary">
+            保存时自动附加来源标签（GitHub / B站 / 网盘 / CodePen，手动添加为「本地」）
+          </p>
 
           {/* AI 工具栏 */}
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-bg p-2">
@@ -274,7 +278,7 @@ export function ComponentModal({ open, initial, onClose, onSave, onToast }: Comp
               type="button"
               disabled={aiBusy}
               onClick={handleClean}
-              className="flex items-center gap-1.5 rounded-md border border-border bg-surface1 px-2.5 py-1.5 text-xs text-secondary transition-colors hover:border-accent/50 hover:text-primary disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-focus"
+              className="micro-btn flex items-center gap-1.5 border border-border bg-surface1 px-2.5 py-1.5 text-xs text-secondary hover:border-accent/50 hover:text-primary disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-focus"
             >
               <BroomIcon size={14} />
               清理代码
@@ -284,26 +288,27 @@ export function ComponentModal({ open, initial, onClose, onSave, onToast }: Comp
                 type="button"
                 disabled={aiBusy}
                 onClick={() => setConvertOpen((v) => !v)}
-                className="flex items-center gap-1.5 rounded-md border border-border bg-surface1 px-2.5 py-1.5 text-xs text-secondary transition-colors hover:border-accent/50 hover:text-primary disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-focus"
+                className="micro-btn flex items-center gap-1.5 border border-border bg-surface1 px-2.5 py-1.5 text-xs text-secondary hover:border-accent/50 hover:text-primary disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-focus"
                 aria-haspopup="menu"
                 aria-expanded={convertOpen}
               >
                 <ConvertIcon size={14} />
                 转换格式
-                <ChevronDownIcon size={12} />
+                <ChevronDownIcon size={12} className={`transition-transform duration-300 ${convertOpen ? 'rotate-180' : ''}`} />
               </button>
               {convertOpen && (
                 <div
                   role="menu"
-                  className="absolute left-0 top-full z-10 mt-1 w-36 overflow-hidden rounded-lg border border-border bg-surface2 shadow-elevation2 animate-scaleIn"
+                  className="absolute left-0 top-full z-10 mt-1 w-36 overflow-hidden border border-border bg-surface2 shadow-elevation2 animate-scaleIn"
                 >
-                  {(['React', 'Vue', 'Tailwind'] as ConvertTarget[]).map((t) => (
+                  {(['React', 'Vue', 'Tailwind'] as ConvertTarget[]).map((t, i) => (
                     <button
                       key={t}
                       type="button"
                       role="menuitem"
                       onClick={() => handleConvert(t)}
-                      className="block w-full px-3 py-2 text-left text-xs text-secondary transition-colors hover:bg-surface3 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
+                      className="menu-item block w-full px-3 py-2 text-left text-xs text-secondary transition-colors hover:bg-surface3 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
+                      style={{ animationDelay: `${i * 45}ms` }}
                     >
                       {t}
                     </button>
@@ -315,7 +320,7 @@ export function ComponentModal({ open, initial, onClose, onSave, onToast }: Comp
               type="button"
               disabled={aiBusy}
               onClick={handleExportPrompt}
-              className="flex items-center gap-1.5 rounded-md border border-border bg-surface1 px-2.5 py-1.5 text-xs text-secondary transition-colors hover:border-accent/50 hover:text-primary disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-focus"
+              className="micro-btn flex items-center gap-1.5 border border-border bg-surface1 px-2.5 py-1.5 text-xs text-secondary hover:border-accent/50 hover:text-primary disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-focus"
             >
               <TerminalIcon size={14} />
               导出 Prompt
@@ -355,7 +360,7 @@ export function ComponentModal({ open, initial, onClose, onSave, onToast }: Comp
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 text-sm text-secondary transition-colors hover:bg-surface3 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
+            className="micro-btn border border-border px-4 py-2 text-sm text-secondary hover:bg-surface3 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
           >
             取消
           </button>
@@ -363,7 +368,7 @@ export function ComponentModal({ open, initial, onClose, onSave, onToast }: Comp
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="relative flex items-center gap-2 overflow-hidden rounded-lg bg-gradient-to-r from-accent to-accentHover px-5 py-2 text-sm font-semibold text-[#0B0B0C] transition-transform duration-200 hover:scale-[1.03] active:scale-95 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-focus"
+            className="micro-btn relative flex items-center gap-2 overflow-hidden bg-gradient-to-r from-accent to-accentHover px-5 py-2 text-sm font-semibold text-[#0B0B0C] disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-focus"
           >
             {saving ? (
               <>

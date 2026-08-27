@@ -25,13 +25,15 @@ export function Toast({ toasts, onDismiss }: ToastProps) {
         <div
           key={t.id}
           role="status"
-          className={`pointer-events-auto flex items-center gap-2.5 rounded-xl border border-border bg-surface2 px-4 py-2.5 text-sm text-primary shadow-elevation2 animate-toastIn ${STYLES[t.type].ring}`}
+          className={`group pointer-events-auto flex items-center gap-2.5 border border-border bg-surface2 px-4 py-2.5 text-sm text-primary shadow-elevation2 animate-toastIn transition-[border-color,box-shadow] duration-300 hover:border-accent/40 ${STYLES[t.type].ring}`}
         >
-          {STYLES[t.type].icon}
+          <span className="transition-transform duration-300 group-hover:scale-110">
+            {STYLES[t.type].icon}
+          </span>
           <span>{t.text}</span>
           <button
             type="button"
-            className="ml-1 grid h-5 w-5 place-items-center rounded text-tertiary transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
+            className="micro-icon-btn ml-1 grid h-5 w-5 place-items-center text-tertiary hover:bg-surface3 hover:text-primary focus-visible:outline-2 focus-visible:outline-focus"
             onClick={() => onDismiss(t.id)}
             aria-label="关闭通知"
           >

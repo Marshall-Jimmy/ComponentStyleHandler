@@ -47,6 +47,20 @@ html {
   color-scheme: dark;
 }
 
+/* 全局直角化：所有元素使用直角，符合设计语言 */
+* {
+  border-radius: 0 !important;
+}
+
+/* 可交互元素统一指针光标 */
+button:not(:disabled),
+[role='button']:not(:disabled),
+a[href],
+select:not(:disabled),
+summary {
+  cursor: pointer;
+}
+
 body {
   margin: 0;
   background: var(--color-bg);
@@ -87,6 +101,190 @@ body {
 ::selection {
   background: var(--color-accent-soft);
   color: var(--color-text-primary);
+}
+
+/* ============ 微交互动画系统 ============ */
+:root {
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* 弹簧感：轻微回弹 */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1); /* 出场缓动 */
+}
+
+/* 交互元素统一过渡基类 */
+.micro-btn,
+.micro-icon-btn,
+.micro-item,
+.micro-tag,
+.micro-lift {
+  transition:
+    transform 0.28s var(--ease-spring),
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.28s ease,
+    letter-spacing 0.24s ease,
+    opacity 0.2s ease;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+/* 常规按钮：hover 微放大 + 上浮 + 琥珀微光，active 回落 */
+.micro-btn:hover {
+  transform: scale(1.04) translateY(-1px);
+  box-shadow:
+    0 0 0 1px var(--color-accent-soft),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.micro-btn:active {
+  transform: scale(0.96) translateY(0);
+  box-shadow: none;
+}
+
+/* 纯图标按钮：hover 放大 + 高亮，active 收缩 */
+.micro-icon-btn:hover {
+  transform: scale(1.1);
+}
+.micro-icon-btn:active {
+  transform: scale(0.9);
+}
+
+/* 卡片：hover 抬升 + 边框强调 + 琥珀辉光 */
+.micro-card {
+  transition:
+    transform 0.35s var(--ease-spring),
+    border-color 0.3s ease,
+    box-shadow 0.35s ease,
+    background-color 0.3s ease;
+  transform: translateZ(0);
+  will-change: transform;
+}
+.micro-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--color-border-strong);
+  box-shadow:
+    var(--shadow-elevation-2),
+    0 0 0 1px var(--color-accent-soft),
+    0 14px 36px rgba(0, 0, 0, 0.4);
+}
+
+/* 列表项 / 文件行：hover 轻微右移 + 琥珀边框 */
+.micro-item:hover {
+  transform: translateX(3px);
+  border-color: rgba(230, 180, 80, 0.55);
+}
+
+/* 标签：hover 上浮，active 回落 */
+.micro-tag:hover {
+  transform: translateY(-2px);
+}
+.micro-tag:active {
+  transform: translateY(0) scale(0.95);
+}
+
+/* 面板：hover 轻微上浮 + 琥珀描边 */
+.micro-lift:hover {
+  transform: translateY(-1px);
+  border-color: rgba(230, 180, 80, 0.25);
+}
+
+/* 文本字距呼吸：按钮 hover 时字符间距轻微拉开 */
+.micro-tracking {
+  letter-spacing: 0.01em;
+  transition: letter-spacing 0.25s var(--ease-spring);
+}
+.group:hover .micro-tracking {
+  letter-spacing: 0.1em;
+}
+
+/* 按钮光泽扫过 */
+.shine-sweep {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.shine-sweep::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -40%;
+  width: 32%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  transform: skewX(-20deg);
+  opacity: 0;
+}
+.group:hover .shine-sweep::before {
+  opacity: 1;
+  animation: shine 0.65s ease;
+}
+
+/* 卡片入场：交错浮现 */
+.card-enter {
+  animation: cardIn 0.55s var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 38ms);
+}
+
+/* 下拉菜单项入场 */
+.menu-item {
+  animation: menuIn 0.28s var(--ease-out) both;
+}
+
+/* 活动日志项入场 */
+.activity-item {
+  animation: activityIn 0.3s var(--ease-out) both;
+}
+
+/* 空状态漂浮 */
+.floaty {
+  animation: floaty 5s ease-in-out infinite;
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes activityIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes shine {
+  from {
+    transform: translateX(-40%) skewX(-20deg);
+  }
+  to {
+    transform: translateX(340%) skewX(-20deg);
+  }
 }
 
 /* 尊重系统减少动画设置 */

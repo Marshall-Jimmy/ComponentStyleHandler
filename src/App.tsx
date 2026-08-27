@@ -8,6 +8,7 @@ import { Sidebar } from './components/Sidebar';
 import { CardWall } from './components/CardWall';
 import { ComponentModal } from './components/ComponentModal';
 import { SettingsModal } from './components/SettingsModal';
+import { ConfirmDialog } from './components/ConfirmDialog';
 import { Toast } from './components/Toast';
 import { ErrorBanner } from './components/ErrorBanner';
 import { copyText } from './utils/clipboard';
@@ -36,6 +37,7 @@ export default function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Component | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Component | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
 
   // 全局错误捕获
@@ -93,18 +95,18 @@ export default function App() {
     [pushToast],
   );
 
-  const handleDelete = useCallback(
-    async (component: Component) => {
-      if (!window.confirm(`确定删除「${component.name}」吗？`)) return;
-      try {
-        await deleteComponent(component.id);
-        pushToast('success', '已删除');
-      } catch {
-        pushToast('error', '删除失败');
-      }
-    },
-    [deleteComponent, pushToast],
-  );
+  const handleDelete = useCallback(async (component: Component) => {
+    try {
+      await deleteComponent(component.id);
+      pushToast('success', '已删除');
+    } catch {
+      pushToast('error', '删除失败');
+    }
+  }, [deleteComponent, pushToast]);
+
+  const handleDeleteRequest = useCallback((component: Component) => {
+    setDeleteTarget(component);
+  }, []);
 
   const handleSave = useCallback(
     async (draft: ComponentDraft, existing?: Component) => {
@@ -125,7 +127,13 @@ export default function App() {
   }, [reset]);
 
   return (
-    <div className="min-h-screen bg-bg text-primary">
+    <div className="relative min-h-screen text-primary">
+      {/* 背景氛围：琥珀辉光 + 纵深感 */}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-48 right-[-12%] h-[36rem] w-[36rem] bg-accent/[0.06] blur-[160px]" />
+        <div className="absolute bottom-[-14rem] left-[-10%] h-[32rem] w-[32rem] bg-accent/[0.045] blur-[160px]" />
+        <div className="absolute left-1/2 top-[32%] h-[26rem] w-[42rem] -translate-x-1/2 bg-[#6b3d00]/[0.05] blur-[150px]" />
+      </div>
       <Header
         search={search}
         onSearchChange={setSearch}
@@ -155,7 +163,7 @@ export default function App() {
               components={filtered}
               onCopy={handleCopy}
               onEdit={openEdit}
-              onDelete={handleDelete}
+              onDelete={handleDeleteRequest}
               onClearFilters={() => {
                 setSearch('');
                 setActiveTag(null);
@@ -179,6 +187,18 @@ export default function App() {
         onImport={handleImport}
         onReset={handleReset}
         onToast={pushToast}
+      />
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="删除组件"
+        message={deleteTarget ? `确定删除「${deleteTarget.name}」吗？此操作不可恢复。` : ''}
+        confirmText="删除"
+        cancelText="取消"
+        onConfirm={() => {
+          if (deleteTarget) void handleDelete(deleteTarget);
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
       />
       <Toast toasts={toasts} onDismiss={removeToast} />
 

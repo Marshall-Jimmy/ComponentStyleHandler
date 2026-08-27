@@ -34,7 +34,7 @@ function SvgTag({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className="relative inline-flex items-center transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-focus"
+      className="micro-tag relative inline-flex items-center focus-visible:outline-2 focus-visible:outline-focus"
     >
       <svg
         className="absolute inset-0 h-full w-full"
@@ -47,14 +47,15 @@ function SvgTag({
           y="0.5"
           width="100%"
           height="100%"
-          rx="999"
+          rx="0"
           fill={active ? color.fill : 'transparent'}
           stroke={active ? color.stroke : 'var(--color-border-strong)'}
           strokeWidth="1"
+          style={{ transition: 'fill 0.2s ease, stroke 0.2s ease' }}
         />
       </svg>
       <span
-        className="relative px-3 py-1 text-xs font-medium"
+        className="relative px-3 py-1 text-xs font-medium transition-colors duration-200"
         style={{ color: active ? color.text : 'var(--color-text-secondary)' }}
       >
         {label}
