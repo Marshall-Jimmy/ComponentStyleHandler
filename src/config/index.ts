@@ -112,6 +112,7 @@ export const NETDISK_HOSTS = [
   'wenshushu.cn',
   'wen.lu',
   'fangcloud.com',
+  'ysepan.com',
 ];
 
 /** 代码托管站点识别列表 */
@@ -134,6 +135,8 @@ export const NETDISK = {
   qaiuParserApiAlt: 'https://lz0.qaiu.top/json/parser',
   /** NFD 文件夹文件列表 API */
   qaiuFileListApi: 'https://lz.qaiu.top/v2/getFileList',
+  /** NFD 文件夹文件列表 API 备用镜像 */
+  qaiuFileListApiAlt: 'https://lz0.qaiu.top/v2/getFileList',
   /** 阿里云盘匿名分享信息 API（浏览器端受 CORS 限制，仅作 best-effort） */
   aliyunShareInfoApi: 'https://api.aliyundrive.com/adrive/v1.0/shareLink/getShareInfoByAnonymous',
   /** 阿里云盘匿名分享令牌 API */

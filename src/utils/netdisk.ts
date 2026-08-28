@@ -24,6 +24,7 @@ export type NetdiskProvider =
   | 'chengtong'
   | 'wenshushu'
   | 'fangcloud'
+  | 'ysepan'
   | 'other';
 
 export interface NetdiskFile {
@@ -32,6 +33,8 @@ export interface NetdiskFile {
   isDir: boolean;
   fileId?: string;
   directUrl?: string;
+  /** 文件夹导航 URL（NFD 目录项的 parserUrl，进入子目录用） */
+  folderUrl?: string;
 }
 
 export interface NetdiskResult {
@@ -41,6 +44,8 @@ export interface NetdiskResult {
   shareId?: string;
   shareToken?: string;
   password?: string;
+  /** 当前目录编号（永硕E盘 dirId，目录导航用） */
+  dirId?: string;
 }
 
 const PROVIDER_NAMES: Record<NetdiskProvider, string> = {
@@ -59,6 +64,7 @@ const PROVIDER_NAMES: Record<NetdiskProvider, string> = {
   chengtong: '城通网盘',
   wenshushu: '文叔叔',
   fangcloud: '亿方云',
+  ysepan: '永硕E盘',
   other: '网盘',
 };
 
@@ -96,6 +102,7 @@ export function detectNetdisk(url: string): NetdiskProvider | null {
   if (host.includes('ctfile.com') || host.includes('ctdisk.com')) return 'chengtong';
   if (host.includes('wenshushu.cn') || host.includes('wen.lu')) return 'wenshushu';
   if (host.includes('fangcloud.com')) return 'fangcloud';
+  if (host.includes('ysepan.com')) return 'ysepan';
   return null;
 }
 
@@ -147,27 +154,122 @@ function guessFileName(url: string, fallback: string): string {
   return fallback;
 }
 
-/** 通过 NFD 聚合解析服务获取直链 */
+/** NFD 响应信封 */
+interface QaiuEnvelope {
+  code?: number;
+  msg?: string;
+  success?: boolean;
+  data?: unknown;
+}
+
+/** NFD 目录/文件列表项 */
+interface QaiuFileItem {
+  fileName?: string;
+  fileId?: string;
+  size?: number;
+  fileType?: string;
+  parserUrl?: string;
+}
+
+/**
+ * 请求 NFD 单个端点：忽略 HTTP 状态码解析 JSON 体（NFD 用 body 内 code 表语义，可能返回 HTTP 500 + JSON 错误体），
+ * 直连失败（网络/CDN 拦截返回 HTML）后走 CORS 代理链降级。
+ */
+async function qaiuFetch(base: string, qs: URLSearchParams): Promise<QaiuEnvelope | null> {
+  const url = `${base}?${qs}`;
+  const attempt = async (u: string): Promise<QaiuEnvelope | null> => {
+    try {
+      const res = await fetchWithTimeout(u);
+      const text = await res.text();
+      try {
+        return JSON.parse(text) as QaiuEnvelope;
+      } catch {
+        return null; // 非 JSON（CDN 拦截页等）
+      }
+    } catch {
+      return null;
+    }
+  };
+  const direct = await attempt(url);
+  if (direct) return direct;
+  for (const proxy of CORS_PROXIES) {
+    const via = await attempt(proxiedUrl(url, proxy));
+    if (via) return via;
+  }
+  return null;
+}
+
+/** 请求 NFD 服务：按序尝试多个公共站，成功（code=200）即返回 data */
+async function qaiuRequest<T>(bases: string[], qs: URLSearchParams): Promise<T> {
+  let lastError: Error | null = null;
+  for (const base of bases) {
+    const env = await qaiuFetch(base, qs);
+    if (env) {
+      if (env.code === 200 && env.success) return env.data as T;
+      lastError = new Error(env.msg || '解析失败，该链接可能已失效或需要登录');
+    } else {
+      lastError = new Error('解析服务暂时不可用，请稍后重试');
+    }
+  }
+  throw lastError ?? new Error('解析服务不可用');
+}
+
+/** 通过 NFD 聚合解析服务获取单文件直链 */
 async function resolveViaQaiu(url: string, password?: string): Promise<NetdiskResult> {
   const provider = detectNetdisk(url) ?? 'other';
   const qs = new URLSearchParams({ url });
   if (password) qs.set('pwd', password);
-  const data = (await fetchJson(`${NETDISK.qaiuParserApi}?${qs}`)) as {
-    code?: number;
-    success?: boolean;
-    msg?: string;
-    data?: { directLink?: string; directUrl?: string; shareKey?: string };
-  };
-  if (data.code !== 200 || !data.success || !data.data) {
-    throw new Error(data.msg || '解析失败，该链接可能已失效或需要登录');
-  }
-  const directUrl = data.data.directLink ?? data.data.directUrl;
+  const data = await qaiuRequest<{ directLink?: string; directUrl?: string }>(
+    [NETDISK.qaiuParserApi, NETDISK.qaiuParserApiAlt],
+    qs,
+  );
+  const directUrl = data.directLink ?? data.directUrl;
   if (!directUrl) throw new Error('未获取到直链');
   return {
     provider,
     providerName: PROVIDER_NAMES[provider],
     files: [{ name: guessFileName(directUrl, url), isDir: false, directUrl }],
   };
+}
+
+/** 通过 NFD 文件夹列表接口解析目录（支持蓝奏/蓝奏优享/小飞机/永硕E盘等） */
+async function fetchQaiuFolder(url: string, password?: string, dirId?: string): Promise<NetdiskResult> {
+  const provider = detectNetdisk(url) ?? 'other';
+  const qs = new URLSearchParams({ url });
+  if (password) qs.set('pwd', password);
+  if (dirId) qs.set('dirId', dirId);
+  const data = await qaiuRequest<QaiuFileItem[] | null>(
+    [NETDISK.qaiuFileListApi, NETDISK.qaiuFileListApiAlt],
+    qs,
+  );
+  return {
+    provider,
+    providerName: PROVIDER_NAMES[provider],
+    password,
+    dirId,
+    files: (Array.isArray(data) ? data : []).map((it) => {
+      const isDir = it.fileType === 'folder';
+      return {
+        name: it.fileName ?? '未知文件',
+        size: it.size,
+        isDir,
+        fileId: it.fileId,
+        directUrl: isDir ? undefined : it.parserUrl,
+        folderUrl: isDir ? it.parserUrl : undefined,
+      };
+    }),
+  };
+}
+
+/** 进入网盘子目录（UI 文件夹导航用；永硕E盘需带 dirId 目录编号） */
+export async function listNetdiskFolder(
+  folder: NetdiskFile,
+  baseUrl: string,
+  password?: string,
+): Promise<NetdiskResult> {
+  const target = folder.folderUrl ?? baseUrl;
+  const provider = detectNetdisk(target) ?? detectNetdisk(baseUrl) ?? 'other';
+  return fetchQaiuFolder(target, password, provider === 'ysepan' ? folder.fileId : undefined);
 }
 
 /** 阿里云盘匿名分享（best-effort，浏览器端常受 CORS 限制） */
@@ -218,7 +320,9 @@ async function parseAliyun(url: string, password?: string): Promise<NetdiskResul
 
 /**
  * 解析网盘分享链接，返回文件列表 / 直链。
- * 百度/阿里网盘无法在浏览器匿名解析，抛出带明确原因的异常。
+ * 策略：
+ * - NFD 平台先尝试文件夹列表接口（支持目录分享展示多文件），失败回退单文件直链
+ * - 百度/阿里网盘无法在浏览器匿名解析，抛出带明确原因的异常
  */
 export async function parseNetdisk(url: string, password?: string): Promise<NetdiskResult> {
   const provider = detectNetdisk(url);
@@ -233,11 +337,21 @@ export async function parseNetdisk(url: string, password?: string): Promise<Netd
       throw new Error('阿里云盘直链需要服务端代理或登录态，浏览器内无法匿名解析，可尝试打开分享页');
     }
   }
-  if (provider === 'fangcloud') {
-    // NFD 公共解析站暂未实现亿方云，明确提示避免误判为其他平台
-    throw new Error('亿方云暂不支持浏览器内匿名解析，请直接打开分享页下载');
+  // 其余平台走 NFD：优先文件夹列表，单文件或平台不支持目录时回退直链
+  try {
+    const folder = await fetchQaiuFolder(url, password);
+    if (folder.files.length > 0) return folder;
+  } catch {
+    /* 单文件/平台不支持文件夹，走直链 */
   }
-  return resolveViaQaiu(url, password);
+  try {
+    return await resolveViaQaiu(url, password);
+  } catch (err) {
+    if (provider === 'fangcloud') {
+      throw new Error('亿方云暂不支持浏览器内匿名解析，请直接打开分享页下载');
+    }
+    throw err;
+  }
 }
 
 /** 解析单个文件的直链 */
@@ -297,16 +411,32 @@ function splitCodeByExt(text: string, name: string, directUrl: string): NetdiskC
   return { html, css: isCss ? text : '', js: isJs ? text : '', source: name, directUrl };
 }
 
-/** 从网盘链接抓取可编辑代码（供 B 站解析出的网盘链接使用） */
+/** 从网盘链接抓取可编辑代码（供 B 站解析出的网盘链接使用；目录分享自动下钻找文本文件） */
 export async function fetchCodeFromNetdisk(url: string, password?: string): Promise<NetdiskCode> {
   const result = await parseNetdisk(url, password);
+  return pickCodeFromResult(result, url, password, 0);
+}
+
+/** 在网盘结果中挑选文本文件：优先文件，无文件时进入第一个子目录继续找（限制深度防止无限递归） */
+async function pickCodeFromResult(
+  result: NetdiskResult,
+  baseUrl: string,
+  password: string | undefined,
+  depth: number,
+): Promise<NetdiskCode> {
+  if (depth > 3) throw new Error('网盘目录层级过深，请手动选择文件');
   const file =
     result.files.find((f) => !f.isDir && isTextFile(f.name)) ?? result.files.find((f) => !f.isDir);
-  if (!file) throw new Error('网盘中未找到可下载的文件');
-  const directUrl = await resolveDownload(result, file);
-  if (!isTextFile(file.name)) {
-    throw new Error(`网盘文件为二进制（${file.name}），无法填入编辑器，请复制直链下载`);
+  if (file) {
+    const directUrl = file.directUrl ?? (await resolveDownload(result, file));
+    if (!isTextFile(file.name)) {
+      throw new Error(`网盘文件为二进制（${file.name}），无法填入编辑器，请复制直链下载`);
+    }
+    const text = await fetchTextUrl(directUrl);
+    return splitCodeByExt(text, file.name, directUrl);
   }
-  const text = await fetchTextUrl(directUrl);
-  return splitCodeByExt(text, file.name, directUrl);
+  const folder = result.files.find((f) => f.isDir);
+  if (!folder || !folder.folderUrl) throw new Error('网盘中未找到可下载的文件');
+  const next = await listNetdiskFolder(folder, baseUrl, password);
+  return pickCodeFromResult(next, baseUrl, password, depth + 1);
 }

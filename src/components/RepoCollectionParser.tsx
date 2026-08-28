@@ -42,6 +42,20 @@ export function RepoCollectionParser({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
 
+  /** 组件名去重：同名的用父目录前缀区分 */
+  const uniqueName = useMemo(() => {
+    const seen = new Set<string>();
+    return (d: RepoDemo): string => {
+      let n = d.name;
+      if (seen.has(n)) {
+        const parent = d.path.split('/').slice(0, -1).join('/');
+        n = parent ? parent.replace(/\//g, ' · ') : d.path;
+      }
+      seen.add(n);
+      return n;
+    };
+  }, []);
+
   // 合集面板仅在 listDemos + fetchDemo 就绪时渲染（CodeHostParser 保证），此处兜底
   const fetchDemo = config.fetchDemo;
   if (!fetchDemo) {
@@ -83,20 +97,6 @@ export function RepoCollectionParser({
       setPreviewLoading(false);
     }
   };
-
-  /** 组件名去重：同名的用父目录前缀区分 */
-  const uniqueName = useMemo(() => {
-    const seen = new Set<string>();
-    return (d: RepoDemo): string => {
-      let n = d.name;
-      if (seen.has(n)) {
-        const parent = d.path.split('/').slice(0, -1).join('/');
-        n = parent ? parent.replace(/\//g, ' · ') : d.path;
-      }
-      seen.add(n);
-      return n;
-    };
-  }, []);
 
   /** 把单个 Demo 填入编辑器（走单组件保存流程） */
   const handleEditOne = async (demo: RepoDemo) => {

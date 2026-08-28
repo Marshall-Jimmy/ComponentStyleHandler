@@ -263,3 +263,27 @@ export function BoxIcon({ size = 24, ...rest }: IconProps) {
     </svg>
   );
 }
+
+export function FolderIcon({ size = 24, ...rest }: IconProps) {
+  return (
+    <svg {...base(size)} {...rest}>
+      <path d="M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2Z" />
+    </svg>
+  );
+}
+
+export function ChevronRightIcon({ size = 24, ...rest }: IconProps) {
+  return (
+    <svg {...base(size)} {...rest}>
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
+export function ArrowLeftIcon({ size = 24, ...rest }: IconProps) {
+  return (
+    <svg {...base(size)} {...rest}>
+      <path d="M19 12H5M12 19l-7-7 7-7" />
+    </svg>
+  );
+}

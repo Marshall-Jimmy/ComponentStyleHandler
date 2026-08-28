@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   detectNetdisk,
   parseNetdisk,
+  listNetdiskFolder,
   resolveDownload,
   fetchTextUrl,
   isTextFile,
@@ -23,6 +24,9 @@ import {
   ExternalLinkIcon,
   BoxIcon,
   RefreshIcon,
+  FolderIcon,
+  ChevronRightIcon,
+  ArrowLeftIcon,
 } from '../utils/icons';
 import { copyText } from '../utils/clipboard';
 
@@ -33,6 +37,13 @@ interface NetdiskParserProps {
 }
 
 type Stage = 'idle' | 'guidance' | 'parsing' | 'list' | 'fetching' | 'done' | 'error';
+
+/** 目录导航路径节点（用于面包屑与返回上级） */
+interface PathLevel {
+  name: string;
+  folderUrl?: string;
+  fileId?: string;
+}
 
 /** 需登录态/服务端代理，浏览器内无法匿名解析的网盘 */
 function needsGuidance(provider: string | null): boolean {
@@ -53,6 +64,7 @@ export function NetdiskParser({ url, onCodeFetched, onError }: NetdiskParserProp
   const [password, setPassword] = useState('');
   const [direct, setDirect] = useState<{ url: string; name: string; text: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [path, setPath] = useState<PathLevel[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pwdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelRef = useRef(false);
@@ -90,6 +102,7 @@ export function NetdiskParser({ url, onCodeFetched, onError }: NetdiskParserProp
   // URL 变化后自动解析（需登录态的网盘除外）
   useEffect(() => {
     setCopied(false);
+    setPath([]);
     if (timerRef.current) clearTimeout(timerRef.current);
     if (pwdTimerRef.current) clearTimeout(pwdTimerRef.current);
     if (!url || !detectNetdisk(url)) {
@@ -125,6 +138,39 @@ export function NetdiskParser({ url, onCodeFetched, onError }: NetdiskParserProp
         void runParse(value);
       }
     }, 600);
+  };
+
+  /** 进入目录（folder 为当前目录节点，truncateTo 为面包屑回退位置：进入子目录=当前长度，返回上级=其索引） */
+  const openDir = async (folder: PathLevel, truncateTo: number) => {
+    setStage('parsing');
+    setError('');
+    setDirect(null);
+    reset();
+    cancelRef.current = false;
+    advance(`进入目录 ${folder.name}`);
+    try {
+      const res = await listNetdiskFolder(
+        { name: folder.name, isDir: true, fileId: folder.fileId, folderUrl: folder.folderUrl },
+        url,
+        password.trim() || undefined,
+      );
+      if (cancelRef.current) return;
+      setPath((prev) => [...prev.slice(0, truncateTo), folder]);
+      setResult(res);
+      setStage('list');
+      complete(res.files.length > 0 ? `发现 ${res.files.length} 个文件` : '目录为空');
+    } catch (err) {
+      if (cancelRef.current) return;
+      markError(err instanceof Error ? err.message : '进入目录失败');
+      setStage('list');
+      onError(err instanceof Error ? err.message : '进入目录失败');
+    }
+  };
+
+  /** 返回根目录（重新解析原始链接） */
+  const goRoot = () => {
+    setPath([]);
+    void runParse(password);
   };
 
   /** 点击文件：解析直链并抓取文本/展示下载 */
@@ -229,23 +275,66 @@ export function NetdiskParser({ url, onCodeFetched, onError }: NetdiskParserProp
       {/* 文件列表 */}
       {stage === 'list' && result && (
         <div className="space-y-1">
+          {/* 目录面包屑 */}
+          {path.length > 0 && (
+            <div className="flex flex-wrap items-center gap-0.5 text-[11px] text-tertiary">
+              <button
+                type="button"
+                onClick={goRoot}
+                disabled={isBusy}
+                className="micro-btn rounded-none px-1 py-0.5 text-secondary hover:text-accent disabled:opacity-50"
+              >
+                根目录
+              </button>
+              {path.map((lv, i) => (
+                <span key={`${lv.name}-${i}`} className="flex items-center gap-0.5">
+                  <ChevronRightIcon size={12} className="shrink-0" />
+                  {i === path.length - 1 ? (
+                    <span className="max-w-[10rem] truncate text-primary">{lv.name}</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => openDir(lv, i)}
+                      disabled={isBusy}
+                      className="micro-btn max-w-[10rem] truncate rounded-none px-1 py-0.5 text-secondary hover:text-accent disabled:opacity-50"
+                    >
+                      {lv.name}
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
           {result.files.length === 0 ? (
-            <p className="text-xs text-tertiary">该分享中没有可下载的文件</p>
+            <p className="text-xs text-tertiary">该目录中没有可下载的文件</p>
           ) : (
             result.files.map((file) => (
               <button
                 key={file.fileId ?? file.name}
                 type="button"
                 disabled={isBusy}
-                onClick={() => handleSelectFile(file)}
+                onClick={() =>
+                  file.isDir
+                    ? openDir(
+                        { name: file.name, folderUrl: file.folderUrl, fileId: file.fileId },
+                        path.length,
+                      )
+                    : handleSelectFile(file)
+                }
                 className="micro-item flex w-full items-center gap-2 border border-border bg-surface1 px-2.5 py-2 text-left text-xs hover:border-accent/50 disabled:opacity-50"
               >
-                <BoxIcon size={14} className="shrink-0 text-tertiary" />
+                {file.isDir ? (
+                  <FolderIcon size={14} className="shrink-0 text-warning" />
+                ) : (
+                  <BoxIcon size={14} className="shrink-0 text-tertiary" />
+                )}
                 <span className="min-w-0 flex-1 truncate text-secondary">{file.name}</span>
                 {file.size !== undefined && (
                   <span className="shrink-0 text-tertiary">{formatSize(file.size)}</span>
                 )}
-                {file.directUrl ? (
+                {file.isDir ? (
+                  <span className="shrink-0 text-tertiary">目录</span>
+                ) : file.directUrl ? (
                   <span className="shrink-0 text-accent">直链已就绪</span>
                 ) : (
                   <span className="shrink-0 text-tertiary">
@@ -255,7 +344,9 @@ export function NetdiskParser({ url, onCodeFetched, onError }: NetdiskParserProp
               </button>
             ))
           )}
-          <p className="text-[11px] text-tertiary">点击文件：文本/代码自动填入编辑器，二进制文件解析直链</p>
+          <p className="text-[11px] text-tertiary">
+            点击文件夹进入子目录，点击文件：文本/代码自动填入编辑器，二进制文件解析直链
+          </p>
         </div>
       )}
 
@@ -298,6 +389,19 @@ export function NetdiskParser({ url, onCodeFetched, onError }: NetdiskParserProp
               下载
             </a>
           </div>
+          {(result || path.length > 0) && (
+            <button
+              type="button"
+              onClick={() => {
+                setStage('list');
+                setDirect(null);
+              }}
+              className="micro-btn flex items-center gap-1 border border-border bg-surface1 px-2 py-1 text-[11px] text-secondary hover:border-accent/50 hover:text-primary"
+            >
+              <ArrowLeftIcon size={12} />
+              返回文件列表
+            </button>
+          )}
         </div>
       )}
 
