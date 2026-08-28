@@ -21,6 +21,9 @@ export type NetdiskProvider =
   | 'mcloud'
   | 'feijipan'
   | 'uctransfer'
+  | 'chengtong'
+  | 'wenshushu'
+  | 'fangcloud'
   | 'other';
 
 export interface NetdiskFile {
@@ -53,6 +56,9 @@ const PROVIDER_NAMES: Record<NetdiskProvider, string> = {
   mcloud: '中国移动云盘',
   feijipan: '小飞机网盘',
   uctransfer: 'UC网盘',
+  chengtong: '城通网盘',
+  wenshushu: '文叔叔',
+  fangcloud: '亿方云',
   other: '网盘',
 };
 
@@ -87,6 +93,9 @@ export function detectNetdisk(url: string): NetdiskProvider | null {
   if (host.includes('yun.139.com')) return 'mcloud';
   if (host.includes('feijipan.com') || host.includes('feijix.com')) return 'feijipan';
   if (host.includes('uc.cn')) return 'uctransfer';
+  if (host.includes('ctfile.com') || host.includes('ctdisk.com')) return 'chengtong';
+  if (host.includes('wenshushu.cn') || host.includes('wen.lu')) return 'wenshushu';
+  if (host.includes('fangcloud.com')) return 'fangcloud';
   return null;
 }
 
@@ -223,6 +232,10 @@ export async function parseNetdisk(url: string, password?: string): Promise<Netd
     } catch {
       throw new Error('阿里云盘直链需要服务端代理或登录态，浏览器内无法匿名解析，可尝试打开分享页');
     }
+  }
+  if (provider === 'fangcloud') {
+    // NFD 公共解析站暂未实现亿方云，明确提示避免误判为其他平台
+    throw new Error('亿方云暂不支持浏览器内匿名解析，请直接打开分享页下载');
   }
   return resolveViaQaiu(url, password);
 }

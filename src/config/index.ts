@@ -87,7 +87,7 @@ export const AI = {
   storageKey: 'stylehandler:ai-keys',
 };
 
-/** 网盘域名识别列表 */
+/** 网盘域名识别列表（须与 utils/netdisk.ts 的 detectNetdisk 保持一致，新增平台两端同步） */
 export const NETDISK_HOSTS = [
   'pan.baidu.com',
   'aliyundrive.com',
@@ -104,6 +104,14 @@ export const NETDISK_HOSTS = [
   'pan.xunlei.com',
   'cloud.189.cn',
   'yun.139.com',
+  'feijipan.com',
+  'feijix.com',
+  'uc.cn',
+  'ctfile.com',
+  'ctdisk.com',
+  'wenshushu.cn',
+  'wen.lu',
+  'fangcloud.com',
 ];
 
 /** 代码托管站点识别列表 */
