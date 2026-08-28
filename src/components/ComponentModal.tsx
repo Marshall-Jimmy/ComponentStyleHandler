@@ -19,6 +19,7 @@ interface ComponentModalProps {
   initial: Component | null;
   onClose: () => void;
   onSave: (draft: ComponentDraft, existing?: Component) => Promise<void>;
+  onBatchImport: (items: Component[]) => Promise<number>;
   onToast: (type: 'success' | 'error' | 'info', text: string) => void;
 }
 
@@ -91,7 +92,14 @@ function SvgInput({
 }
 
 /** 添加/编辑组件模态框 */
-export function ComponentModal({ open, initial, onClose, onSave, onToast }: ComponentModalProps) {
+export function ComponentModal({
+  open,
+  initial,
+  onClose,
+  onSave,
+  onBatchImport,
+  onToast,
+}: ComponentModalProps) {
   const [draft, setDraft] = useState<ComponentDraft>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
@@ -256,6 +264,8 @@ export function ComponentModal({ open, initial, onClose, onSave, onToast }: Comp
             onCodeFetched={(html, css, js) =>
               setDraft((prev) => ({ ...prev, html, css, js }))
             }
+            onBatchImport={onBatchImport}
+            onToast={onToast}
             onError={(msg) => onToast('info', msg)}
           />
           <SvgInput

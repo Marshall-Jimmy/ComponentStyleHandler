@@ -122,6 +122,34 @@ export default function App() {
     [importComponents],
   );
 
+  /** 合集批量导入：按 name+url 去重（url 归一化去尾斜杠）；已存在但 CSS 为空的破损残件则原位覆盖修复 */
+  const handleBatchImport = useCallback(
+    async (items: Component[]) => {
+      const norm = (u?: string) => (u ?? '').replace(/\/+$/, '');
+      const byKey = new Map(components.map((c) => [`${c.name}::${norm(c.url)}`, c]));
+      const fresh: Component[] = [];
+      const heal: Array<{ existing: Component; next: Component }> = [];
+      for (const c of items) {
+        const existing = byKey.get(`${c.name}::${norm(c.url)}`);
+        if (!existing) {
+          fresh.push(c);
+        } else if (!(existing.css ?? '').trim()) {
+          // CSS 为空说明当年导入时样式没存进去（效果全丢），删除残件并用新版本替换
+          heal.push({ existing, next: c });
+        }
+      }
+      if (fresh.length === 0 && heal.length === 0) return 0;
+      for (const { existing } of heal) {
+        await deleteComponent(existing.id);
+      }
+      const all = [...fresh, ...heal.map((h) => h.next)];
+      const n = await importComponents(all);
+      if (heal.length > 0) pushToast('success', `已修复 ${heal.length} 个无样式组件`);
+      return n;
+    },
+    [components, importComponents, deleteComponent, pushToast],
+  );
+
   const handleReset = useCallback(async () => {
     return reset();
   }, [reset]);
@@ -178,6 +206,7 @@ export default function App() {
         initial={editing}
         onClose={() => setModalOpen(false)}
         onSave={handleSave}
+        onBatchImport={handleBatchImport}
         onToast={pushToast}
       />
       <SettingsModal

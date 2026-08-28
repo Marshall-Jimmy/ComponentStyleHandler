@@ -4,12 +4,14 @@ import {
   classifyText,
   extractCodeBlocks,
   splitHtmlCode,
+  inlineDemoAssets,
+  collectDemos,
   decodeBase64,
   basename,
   pickHtmlFile,
   README_CANDIDATES,
 } from './codeUtils';
-import type { HostCode, HostStatus } from './codeUtils';
+import type { HostCode, HostStatus, RepoCollection, RepoDemo } from './codeUtils';
 
 /**
  * GitLab 链接智能解析
@@ -168,22 +170,26 @@ async function fetchTreeFiles(
   ref: string,
   basePath: string,
   onStatus?: HostStatus,
-): Promise<Array<{ path: string; type: string }>> {
-  const all: Array<{ path: string; type: string }> = [];
+): Promise<Array<{ path: string; type: string; size?: number }>> {
+  const all: Array<{ path: string; type: string; size?: number }> = [];
   for (let page = 1; ; page++) {
     const params = new URLSearchParams({ ref, recursive: 'true', per_page: '100', page: String(page) });
     if (basePath) params.set('path', basePath);
     const data = (await gitlabFetchJson(
       `${apiBase}/projects/${projectId(project)}/repository/tree?${params.toString()}`,
       onStatus,
-    )) as Array<{ path?: string; type?: string }> | { message?: string };
+    )) as Array<{ path?: string; type?: string; size?: number }> | { message?: string };
     if (!Array.isArray(data)) {
       const msg = data && typeof data === 'object' && 'message' in data ? data.message : '';
       throw new Error(msg ? `GitLab：${msg}` : '无法获取 GitLab 仓库文件列表');
     }
     for (const f of data) {
       if (f && typeof f.path === 'string') {
-        all.push({ path: f.path as string, type: f.type === 'tree' ? 'tree' : 'blob' });
+        all.push({
+          path: f.path as string,
+          type: f.type === 'tree' ? 'tree' : 'blob',
+          size: typeof f.size === 'number' ? f.size : undefined,
+        });
       }
     }
     if (data.length < 100) break;
@@ -216,6 +222,18 @@ export async function fetchGitlabCode(url: string, onStatus?: HostStatus): Promi
   if (file) {
     onStatus?.(`连接 GitLab：${file.project}`);
     const text = await fetchFileText(apiBase, file.project, file.ref, file.path, onStatus);
+    if (/\.html?$/i.test(file.path)) {
+      const dirPath = file.path.split('/').slice(0, -1).join('/');
+      const inline = await inlineDemoAssets(text, dirPath, (p) =>
+        fetchFileText(apiBase, file.project, file.ref, p, onStatus),
+      );
+      return {
+        html: inline.html,
+        css: inline.css,
+        js: inline.js,
+        source: `${file.project}/${file.path}`,
+      };
+    }
     return classifyText(text, basename(file.path), `${file.project}/${file.path}`);
   }
 
@@ -261,4 +279,49 @@ export async function fetchGitlabCode(url: string, onStatus?: HostStatus): Promi
     }
   }
   throw new Error(`未在 ${project} 找到可用的源码或 README`);
+}
+
+/** 列出仓库中的组件合集（多个 HTML Demo 按目录分组；文件/Blob 链接返回空集） */
+export async function listGitlabDemos(url: string, onStatus?: HostStatus): Promise<RepoCollection> {
+  if (parseGitlabFile(url)) return { demos: [], ref: '' };
+  const apiBase = apiBaseFor(url);
+  const tree = parseGitlabTree(url);
+  const root = parseGitlabRoot(url) ?? (tree ? { project: tree.project } : null);
+  if (!root) throw new Error('无法识别的 GitLab 链接');
+  const { project } = root;
+  onStatus?.(`连接 GitLab：${project}`);
+  const ref = await fetchDefaultBranch(apiBase, project, tree?.ref ?? '', onStatus);
+  const basePath = tree?.path ?? '';
+  onStatus?.('读取仓库文件列表');
+  // tree 接口已用 path 参数限定子树，但路径保持完整供后续抓取
+  const files = await fetchTreeFiles(apiBase, project, ref, basePath, onStatus);
+  const demos = collectDemos(
+    basePath
+      ? files
+          .filter((f) => f.path.startsWith(`${basePath}/`))
+          .map((f) => ({ path: f.path.slice(basePath.length + 1), type: f.type }))
+      : files,
+  ).map((d) => ({ ...d, path: basePath ? `${basePath}/${d.path}` : d.path }));
+  return { demos, ref };
+}
+
+/** 抓取单个 Demo：读取 index.html 并把相对外部 CSS/JS/SVG 内联为自包含代码 */
+export async function fetchGitlabDemo(
+  url: string,
+  demo: RepoDemo,
+  onStatus?: HostStatus,
+): Promise<HostCode> {
+  const apiBase = apiBaseFor(url);
+  const tree = parseGitlabTree(url);
+  const root = parseGitlabRoot(url) ?? (tree ? { project: tree.project } : null);
+  if (!root) throw new Error('无法识别的 GitLab 链接');
+  const { project } = root;
+  const ref = await fetchDefaultBranch(apiBase, project, tree?.ref ?? '', onStatus);
+  onStatus?.(`抓取 ${demo.name}`);
+  const html = await fetchFileText(apiBase, project, ref, demo.path, onStatus);
+  const dirPath = demo.path.split('/').slice(0, -1).join('/');
+  const inline = await inlineDemoAssets(html, dirPath, (p) =>
+    fetchFileText(apiBase, project, ref, p, onStatus),
+  );
+  return { html: inline.html, css: inline.css, js: inline.js, source: `${project}/${demo.path}` };
 }

@@ -4,12 +4,14 @@ import {
   classifyText,
   extractCodeBlocks,
   splitHtmlCode,
+  inlineDemoAssets,
+  collectDemos,
   decodeBase64,
   basename,
   pickHtmlFile,
   README_CANDIDATES,
 } from './codeUtils';
-import type { HostCode, HostStatus } from './codeUtils';
+import type { HostCode, HostStatus, RepoCollection, RepoDemo } from './codeUtils';
 
 /**
  * Gitee 链接智能解析
@@ -124,19 +126,23 @@ async function fetchTreeFiles(
   repo: string,
   ref: string,
   onStatus?: HostStatus,
-): Promise<Array<{ path: string; type: string }>> {
+): Promise<Array<{ path: string; type: string; size?: number }>> {
   const data = (await giteeFetchJson(
     `${GITEE.api}/repos/${owner}/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
     onStatus,
-  )) as { tree?: Array<{ path?: string; type?: string }> };
+  )) as { tree?: Array<{ path?: string; type?: string; size?: number }> };
   const tree = data.tree;
   if (!Array.isArray(tree)) throw new Error('无法获取 Gitee 仓库文件列表');
   return tree
     .filter((f) => f && typeof f.path === 'string')
-    .map((f) => ({ path: f.path as string, type: f.type ?? 'blob' }));
+    .map((f) => ({
+      path: f.path as string,
+      type: f.type ?? 'blob',
+      size: typeof f.size === 'number' ? f.size : undefined,
+    }));
 }
 
-/** 获取单个文件文本内容（contents API，base64 解码） */
+/** 获取单个文件文本内容（contents API 优先，限流/失败时回退 raw 端点，raw 不走 API 配额） */
 async function fetchFileText(
   owner: string,
   repo: string,
@@ -145,12 +151,22 @@ async function fetchFileText(
   onStatus?: HostStatus,
 ): Promise<string> {
   const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-  const data = (await giteeFetchJson(
-    `${GITEE.api}/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
-    onStatus,
-  )) as { content?: string; encoding?: string };
-  if (typeof data.content !== 'string') throw new Error('Gitee 文件内容获取失败');
-  return data.encoding === 'base64' ? decodeBase64(data.content) : data.content;
+  try {
+    const data = (await giteeFetchJson(
+      `${GITEE.api}/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
+      onStatus,
+    )) as { content?: string; encoding?: string };
+    if (typeof data.content !== 'string') throw new Error('Gitee 文件内容获取失败');
+    return data.encoding === 'base64' ? decodeBase64(data.content) : data.content;
+  } catch (err) {
+    // 404/401 表示仓库/文件真实不存在，直接透传避免误报；其余（限流/网络/CORS）走 raw 兜底
+    if (err instanceof Error && /(404|401|不存在|登录|未公开)/.test(err.message)) throw err;
+    onStatus?.('contents API 不可用，改用 raw 端点…');
+    const rawUrl = `${GITEE.proxyPrefix}/${owner}/${repo}/raw/${encodeURIComponent(ref)}/${encodedPath}`;
+    const res = await fetchWithTimeout(rawUrl);
+    if (res.ok) return await res.text();
+    throw err instanceof Error ? err : new Error('Gitee 文件内容获取失败');
+  }
 }
 
 /** 解析 Gitee 链接并抓取代码 */
@@ -159,6 +175,18 @@ export async function fetchGiteeCode(url: string, onStatus?: HostStatus): Promis
   if (file) {
     onStatus?.(`连接 Gitee：${file.owner}/${file.repo}`);
     const text = await fetchFileText(file.owner, file.repo, file.ref, file.path, onStatus);
+    if (/\.html?$/i.test(file.path)) {
+      const dirPath = file.path.split('/').slice(0, -1).join('/');
+      const inline = await inlineDemoAssets(text, dirPath, (p) =>
+        fetchFileText(file.owner, file.repo, file.ref, p, onStatus),
+      );
+      return {
+        html: inline.html,
+        css: inline.css,
+        js: inline.js,
+        source: `${file.owner}/${file.repo}/${file.path}`,
+      };
+    }
     return classifyText(text, basename(file.path), `${file.owner}/${file.repo}/${file.path}`);
   }
 
@@ -204,4 +232,46 @@ export async function fetchGiteeCode(url: string, onStatus?: HostStatus): Promis
     }
   }
   throw new Error(`未在 ${owner}/${repo} 找到可用的源码或 README`);
+}
+
+/** 列出仓库中的组件合集（多个 HTML Demo 按目录分组；文件/Blob 链接返回空集） */
+export async function listGiteeDemos(url: string, onStatus?: HostStatus): Promise<RepoCollection> {
+  if (parseGiteeFile(url)) return { demos: [], ref: '' };
+  const tree = parseGiteeTree(url);
+  const root = parseGiteeRoot(url) ?? (tree ? { owner: tree.owner, repo: tree.repo } : null);
+  if (!root) throw new Error('无法识别的 Gitee 链接');
+  const { owner, repo } = root;
+  onStatus?.(`连接 Gitee：${owner}/${repo}`);
+  const ref = await fetchDefaultBranch(owner, repo, tree?.ref ?? '', onStatus);
+  const basePath = tree?.path ?? '';
+  onStatus?.('读取仓库文件列表');
+  const files = await fetchTreeFiles(owner, repo, ref, onStatus);
+  const demos = collectDemos(
+    basePath
+      ? files
+          .filter((f) => f.path.startsWith(`${basePath}/`))
+          .map((f) => ({ path: f.path.slice(basePath.length + 1), type: f.type }))
+      : files,
+  ).map((d) => ({ ...d, path: basePath ? `${basePath}/${d.path}` : d.path }));
+  return { demos, ref };
+}
+
+/** 抓取单个 Demo：读取 index.html 并把相对外部 CSS/JS/SVG 内联为自包含代码 */
+export async function fetchGiteeDemo(
+  url: string,
+  demo: RepoDemo,
+  onStatus?: HostStatus,
+): Promise<HostCode> {
+  const tree = parseGiteeTree(url);
+  const root = parseGiteeRoot(url) ?? (tree ? { owner: tree.owner, repo: tree.repo } : null);
+  if (!root) throw new Error('无法识别的 Gitee 链接');
+  const { owner, repo } = root;
+  const ref = await fetchDefaultBranch(owner, repo, tree?.ref ?? '', onStatus);
+  onStatus?.(`抓取 ${demo.name}`);
+  const html = await fetchFileText(owner, repo, ref, demo.path, onStatus);
+  const dirPath = demo.path.split('/').slice(0, -1).join('/');
+  const inline = await inlineDemoAssets(html, dirPath, (p) =>
+    fetchFileText(owner, repo, ref, p, onStatus),
+  );
+  return { html: inline.html, css: inline.css, js: inline.js, source: `${owner}/${repo}/${demo.path}` };
 }

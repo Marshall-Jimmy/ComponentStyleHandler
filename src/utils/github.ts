@@ -4,9 +4,11 @@ import {
   classifyText,
   extractCodeBlocks,
   splitHtmlCode,
+  inlineDemoAssets,
+  collectDemos,
   README_CANDIDATES,
 } from './codeUtils';
-import type { HostCode, HostStatus } from './codeUtils';
+import type { HostCode, HostStatus, RepoCollection, RepoDemo } from './codeUtils';
 
 /**
  * GitHub 链接智能解析
@@ -173,6 +175,21 @@ export async function fetchGitHubCode(url: string, onStatus?: GithubStatus): Pro
       `${GITHUB.rawHost}/${path.owner}/${path.repo}/${path.ref}/${path.path}`,
       onStatus,
     );
+    if (/\.html?$/i.test(path.path)) {
+      const dirPath = path.path.split('/').slice(0, -1).join('/');
+      const fetchText = (p: string) =>
+        fetchGithubText(
+          `${GITHUB.rawHost}/${path.owner}/${path.repo}/${path.ref}/${encodeURIComponent(p)}`,
+          onStatus,
+        );
+      const inline = await inlineDemoAssets(text, dirPath, fetchText);
+      return {
+        html: inline.html,
+        css: inline.css,
+        js: inline.js,
+        source: `${path.owner}/${path.repo}/${path.path}`,
+      };
+    }
     return classifyText(text, path.path, `${path.owner}/${path.repo}/${path.path}`);
   }
 
@@ -246,4 +263,63 @@ export async function fetchGitHubCode(url: string, onStatus?: GithubStatus): Pro
   }
 
   throw new Error('无法识别的 GitHub 链接');
+}
+
+/** 获取仓库完整文件树（git trees API，recursive 递归） */
+async function fetchRepoTree(
+  owner: string,
+  repo: string,
+  ref: string,
+  onStatus?: GithubStatus,
+): Promise<Array<{ path: string; type: string; size?: number }>> {
+  const data = (await fetchGithubJson(
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
+    onStatus,
+  )) as { tree?: Array<{ path?: string; type?: string; size?: number }> };
+  if (!Array.isArray(data.tree)) throw new Error('无法获取 GitHub 仓库文件列表');
+  return data.tree
+    .filter((f) => f && typeof f.path === 'string')
+    .map((f) => ({ path: f.path as string, type: f.type === 'tree' ? 'tree' : 'blob', size: f.size }));
+}
+
+/** 列出仓库中的组件合集（多个 HTML Demo 按目录分组；文件/Gist 链接返回空集） */
+export async function listGithubDemos(url: string, onStatus?: GithubStatus): Promise<RepoCollection> {
+  if (parseRepoPath(url) || isGistUrl(url)) return { demos: [], ref: '' };
+  const tree = parseTreePath(url);
+  const root = parseRepoRoot(url) ?? (tree ? { owner: tree.owner, repo: tree.repo } : null);
+  if (!root) throw new Error('无法识别的 GitHub 链接');
+  const { owner, repo } = root;
+  onStatus?.(`连接 GitHub：${owner}/${repo}`);
+  const ref = tree?.ref ?? 'HEAD';
+  const basePath = tree?.path ?? '';
+  onStatus?.('读取仓库文件列表');
+  const files = await fetchRepoTree(owner, repo, ref, onStatus);
+  const demos = collectDemos(
+    basePath
+      ? files
+          .filter((f) => f.path.startsWith(`${basePath}/`))
+          .map((f) => ({ path: f.path.slice(basePath.length + 1), type: f.type }))
+      : files,
+  ).map((d) => ({ ...d, path: basePath ? `${basePath}/${d.path}` : d.path }));
+  return { demos, ref };
+}
+
+/** 抓取单个 Demo：读取 index.html 并把相对外部 CSS/JS/SVG 内联为自包含代码 */
+export async function fetchGithubDemo(
+  url: string,
+  demo: RepoDemo,
+  onStatus?: GithubStatus,
+): Promise<HostCode> {
+  const tree = parseTreePath(url);
+  const root = parseRepoRoot(url) ?? (tree ? { owner: tree.owner, repo: tree.repo } : null);
+  if (!root) throw new Error('无法识别的 GitHub 链接');
+  const { owner, repo } = root;
+  const ref = tree?.ref ?? 'HEAD';
+  onStatus?.(`抓取 ${demo.name}`);
+  const fetchText = (p: string) =>
+    fetchGithubText(`${GITHUB.rawHost}/${owner}/${repo}/${ref}/${encodeURIComponent(p)}`, onStatus);
+  const html = await fetchText(demo.path);
+  const dirPath = demo.path.split('/').slice(0, -1).join('/');
+  const inline = await inlineDemoAssets(html, dirPath, fetchText);
+  return { html: inline.html, css: inline.css, js: inline.js, source: `${owner}/${repo}/${demo.path}` };
 }

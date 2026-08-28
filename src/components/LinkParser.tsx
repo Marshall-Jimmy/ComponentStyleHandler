@@ -1,10 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isBilibiliUrl, fetchCodeFromLink } from '../utils/bilibili';
 import { isNetdiskUrl } from '../utils/netdisk';
-import { isGithubUrl, describeGithubUrl, fetchGitHubCode } from '../utils/github';
-import { isGiteeUrl, describeGiteeUrl, fetchGiteeCode } from '../utils/gitee';
-import { isGitlabUrl, describeGitlabUrl, fetchGitlabCode } from '../utils/gitlab';
-import type { ParsedLink } from '../types';
+import {
+  isGithubUrl,
+  describeGithubUrl,
+  fetchGitHubCode,
+  listGithubDemos,
+  fetchGithubDemo,
+} from '../utils/github';
+import {
+  isGiteeUrl,
+  describeGiteeUrl,
+  fetchGiteeCode,
+  listGiteeDemos,
+  fetchGiteeDemo,
+} from '../utils/gitee';
+import {
+  isGitlabUrl,
+  describeGitlabUrl,
+  fetchGitlabCode,
+  listGitlabDemos,
+  fetchGitlabDemo,
+} from '../utils/gitlab';
+import type { ParsedLink, Component } from '../types';
 import { BilibiliParser } from './BilibiliParser';
 import { NetdiskParser } from './NetdiskParser';
 import { CodeHostParser, type CodeHostConfig } from './CodeHostParser';
@@ -15,6 +33,8 @@ import { TagIcon, SpinnerIcon, AlertTriangleIcon, CheckIcon, ExternalLinkIcon } 
 interface LinkParserProps {
   url: string;
   onCodeFetched: (html: string, css: string, js: string) => void;
+  onBatchImport: (items: Component[]) => Promise<number>;
+  onToast: (type: 'success' | 'error' | 'info', text: string) => void;
   onError: (message: string) => void;
 }
 
@@ -35,6 +55,8 @@ const HOST_CONFIGS: Record<'github' | 'gitee' | 'gitlab', CodeHostConfig> = {
     label: 'GitHub',
     describe: describeGithubUrl,
     fetch: fetchGitHubCode,
+    listDemos: listGithubDemos,
+    fetchDemo: fetchGithubDemo,
     hint: '（直连失败将自动切换 gh-proxy.com 镜像）',
     openLabel: '在 GitHub 打开',
   },
@@ -42,6 +64,8 @@ const HOST_CONFIGS: Record<'github' | 'gitee' | 'gitlab', CodeHostConfig> = {
     label: 'Gitee',
     describe: describeGiteeUrl,
     fetch: fetchGiteeCode,
+    listDemos: listGiteeDemos,
+    fetchDemo: fetchGiteeDemo,
     hint: '',
     openLabel: '在 Gitee 打开',
   },
@@ -49,6 +73,8 @@ const HOST_CONFIGS: Record<'github' | 'gitee' | 'gitlab', CodeHostConfig> = {
     label: 'GitLab',
     describe: describeGitlabUrl,
     fetch: fetchGitlabCode,
+    listDemos: listGitlabDemos,
+    fetchDemo: fetchGitlabDemo,
     hint: '',
     openLabel: '在 GitLab 打开',
   },
@@ -172,7 +198,7 @@ function OtherCodeParser({
 }
 
 /** 统一链接解析入口：按链接类型分发到对应解析器 */
-export function LinkParser({ url, onCodeFetched, onError }: LinkParserProps) {
+export function LinkParser({ url, onCodeFetched, onBatchImport, onToast, onError }: LinkParserProps) {
   const kind = useMemo(() => detectKind(url), [url]);
   if (!kind) return null;
 
@@ -189,6 +215,8 @@ export function LinkParser({ url, onCodeFetched, onError }: LinkParserProps) {
           url={url}
           config={HOST_CONFIGS[hostKind]}
           onCodeFetched={onCodeFetched}
+          onBatchImport={onBatchImport}
+          onToast={onToast}
           onError={onError}
         />
       )}

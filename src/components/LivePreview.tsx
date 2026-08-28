@@ -22,8 +22,11 @@ function buildSrcDoc(component: Component): string {
 (function () {
   var id = ${JSON.stringify(component.id)};
   function report() {
-    var h = document.documentElement.scrollHeight || document.body.scrollHeight;
-    window.parent.postMessage({ type: '${RESIZE_MSG}', id: id, height: h }, '*');
+    var de = document.documentElement;
+    var b = document.body;
+    var h = de.scrollHeight || b.scrollHeight;
+    var w = de.scrollWidth || b.scrollWidth;
+    window.parent.postMessage({ type: '${RESIZE_MSG}', id: id, height: h, width: w }, '*');
   }
   if (window.ResizeObserver) {
     new ResizeObserver(report).observe(document.body);
@@ -55,7 +58,8 @@ ${resizeScript}
 export function LivePreview({ component }: LivePreviewProps) {
   const { ref, isVisible } = useIntersectionObserver<HTMLDivElement>();
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
-  const [contentHeight, setContentHeight] = useState(0);
+  const [contentHeight, setContentHeight] = useState(PREVIEW_HEIGHT);
+  const [contentWidth, setContentWidth] = useState(0);
   const [boxWidth, setBoxWidth] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -88,13 +92,16 @@ export function LivePreview({ component }: LivePreviewProps) {
     return () => ro.disconnect();
   }, []);
 
-  // 监听 iframe 高度上报
+  // 监听卡片 iframe 高度/宽度上报（仅接受本卡片 iframe 的消息，忽略全屏 iframe 的视口数据）
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; id?: string; height?: number };
-      if (data?.type === RESIZE_MSG && data.id === component.id && typeof data.height === 'number') {
-        setContentHeight(Math.min(Math.max(data.height, MIN_CONTENT_HEIGHT), MAX_CONTENT_HEIGHT));
+      const data = event.data as { type?: string; id?: string; height?: number; width?: number };
+      if (data?.type !== RESIZE_MSG || data.id !== component.id || typeof data.height !== 'number') {
+        return;
       }
+      if (iframeRef.current && event.source !== iframeRef.current.contentWindow) return;
+      setContentHeight(Math.min(Math.max(data.height, MIN_CONTENT_HEIGHT), MAX_CONTENT_HEIGHT));
+      setContentWidth(typeof data.width === 'number' && data.width > 0 ? data.width : 0);
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -114,8 +121,15 @@ export function LivePreview({ component }: LivePreviewProps) {
     };
   }, [fullscreen]);
 
-  // 内容高度低于预览区时垂直居中；高于预览区时顶部对齐并裁掉底部，保证所有卡片等高
-  const alignCenter = contentHeight > 0 && contentHeight <= PREVIEW_HEIGHT;
+  // 宽组件（内容宽超出预览区）：等比缩放到预览区内完整显示，避免右侧被裁切
+  const needScale = boxWidth > 0 && contentWidth > boxWidth && contentHeight > 0;
+  const scale = needScale ? Math.min(boxWidth / contentWidth, PREVIEW_HEIGHT / contentHeight) : 1;
+  const iframeW = needScale ? contentWidth : boxWidth;
+  const dispW = iframeW * scale;
+  const dispH = contentHeight * scale;
+  // 全页式组件（body 100vh）在固定 240px 高度内由自身布局居中填满；
+  // 缩放/内容不超高时垂直居中，超高内容顶部对齐裁掉底部
+  const alignCenter = needScale || contentHeight <= PREVIEW_HEIGHT;
 
   return (
     <>
@@ -127,17 +141,19 @@ export function LivePreview({ component }: LivePreviewProps) {
         {srcDoc ? (
           <div
             className="absolute inset-0 overflow-hidden"
-            style={{ display: 'flex', alignItems: alignCenter ? 'center' : 'flex-start' }}
+            style={{ display: 'flex', alignItems: alignCenter ? 'center' : 'flex-start', justifyContent: 'center' }}
           >
-            <iframe
-              ref={iframeRef}
-              title={`${component.name} 预览`}
-              className="block shrink-0 border-0 bg-transparent"
-              style={{ width: boxWidth, height: contentHeight }}
-              sandbox="allow-scripts"
-              srcDoc={srcDoc}
-              loading="lazy"
-            />
+            <div style={{ width: dispW, height: dispH }}>
+              <iframe
+                ref={iframeRef}
+                title={`${component.name} 预览`}
+                className="block shrink-0 border-0 bg-transparent"
+                style={{ width: iframeW, height: contentHeight, transform: `scale(${scale})`, transformOrigin: 'top left' }}
+                sandbox="allow-scripts"
+                srcDoc={srcDoc}
+                loading="lazy"
+              />
+            </div>
           </div>
         ) : (
           <div className="absolute inset-0 grid place-items-center text-tertiary">
