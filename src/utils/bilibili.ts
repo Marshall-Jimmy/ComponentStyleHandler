@@ -2,15 +2,17 @@ import { BILIBILI, CODEPEN, NETDISK_HOSTS, CODE_HOSTS } from '../config';
 import { fetchJson, fetchWithTimeout } from './fetch';
 import { isNetdiskUrl, fetchCodeFromNetdisk } from './netdisk';
 import { isGithubUrl, fetchGitHubCode } from './github';
+import { isGiteeUrl, fetchGiteeCode } from './gitee';
+import { isGitlabUrl, fetchGitlabCode } from './gitlab';
 import type { ParsedLink } from '../types';
 
 /**
  * B 站链接智能解析
  * 1. 提取 BV 号
  * 2. 调用 B 站公开 API 获取视频简介与 UP 主信息
- * 3. 调用热评 API 获取前 N 条热评
- * 4. 从简介与评论中提取 URL，过滤出代码托管站点与网盘链接
- * 5. 用户选择后自动抓取代码（CodePen / GitHub Gist / 其他）
+ * 3. 分页拉取热评（含子回复），提取其中的 URL
+ * 4. 过滤出代码托管站点与网盘链接
+ * 5. 用户选择后自动抓取代码（CodePen / GitHub / Gitee / GitLab / 网盘）
  */
 
 /** 从 URL 中提取 BV 号 */
@@ -79,35 +81,73 @@ export async function fetchVideoInfo(bvid: string): Promise<BiliVideoInfo> {
   };
 }
 
-/** 获取热评文本列表（旧版 x/v2/reply 接口，免 WBI 签名） */
-export async function fetchHotComments(aid: number, count = BILIBILI.replyCount): Promise<string[]> {
-  try {
-    const data = await fetchBiliApi<{
-      code: number;
-      data?: { replies?: Array<{ content?: { message?: string } }> };
-    }>(BILIBILI.replyApi, `type=1&oid=${aid}&sort=2`);
-    if (data.code !== 0 || !data.data?.replies) {
-      return [];
+/** 递归展平评论及子回复的文本 */
+function flattenReplies(
+  replies: Array<{ content?: { message?: string }; replies?: unknown[] }>,
+  out: string[],
+): void {
+  for (const r of replies) {
+    const msg = r.content?.message ?? '';
+    if (msg) out.push(msg);
+    if (Array.isArray(r.replies) && r.replies.length > 0) {
+      flattenReplies(r.replies as never, out);
     }
-    return data.data.replies
-      .slice(0, count)
-      .map((r) => r.content?.message ?? '')
-      .filter(Boolean);
-  } catch {
-    return [];
   }
 }
 
-/** 从文本中提取所有 URL（截断末尾粘连的中文/非 URL 字符，如 "仓库链接"） */
+/** 获取热评文本列表（旧版 x/v2/reply 接口，免 WBI 签名；分页拉取并展平子回复） */
+export async function fetchHotComments(aid: number, count = BILIBILI.replyCount): Promise<string[]> {
+  const out: string[] = [];
+  const perPage = 20;
+  const pages = Math.max(1, Math.ceil(count / perPage));
+  for (let pn = 1; pn <= pages; pn++) {
+    try {
+      const data = await fetchBiliApi<{
+        code: number;
+        data?: { replies?: Array<{ content?: { message?: string }; replies?: unknown[] }> };
+      }>(BILIBILI.replyApi, `type=1&oid=${aid}&sort=2&pn=${pn}&ps=${perPage}`);
+      if (data.code !== 0 || !data.data?.replies?.length) break;
+      flattenReplies(data.data.replies, out);
+    } catch {
+      break; // 单页失败即停（多为限流），已获取的保留
+    }
+    if (pn < pages) await new Promise((r) => setTimeout(r, 150));
+  }
+  // 子回复会超过主评论上限，按合理倍数截断防止过多
+  return out.slice(0, count * 3);
+}
+
+/** 清理 URL 尾部粘连的中文/标点（如 "仓库链接"、"。"） */
+function cleanUrl(u: string): string {
+  return u
+    .replace(/[^A-Za-z0-9_~\-./:=?&#%+@!$'()*;,%]+$/g, '')
+    .replace(/[),.;]+$/, '');
+}
+
+/** 从文本中提取所有 URL：带协议头 + 无协议头裸链接（命中已知网盘/代码托管主机才补全，避免误提取普通词） */
 export function extractUrls(text: string): string[] {
-  const regex = /https?:\/\/[^\s"'<>，。；、）】]+/g;
-  const found = text.match(regex) ?? [];
-  const cleaned = found.map((u) =>
-    u
-      .replace(/[^A-Za-z0-9_~\-./:=?&#%+@!$'()*;,%]+$/g, '')
-      .replace(/[),.;]+$/, ''),
-  );
-  return [...new Set(cleaned.filter(Boolean))];
+  const result: string[] = [];
+  const seen = new Set<string>();
+  const push = (u: string) => {
+    const c = cleanUrl(u);
+    if (c && !seen.has(c)) {
+      seen.add(c);
+      result.push(c);
+    }
+  };
+  for (const u of text.match(/https?:\/\/[^\s"'<>，。；、）】]+/g) ?? []) push(u);
+  const bareRe = /(?:^|[\s（(>，,；;：:])((?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s"'<>，。；、）】]*)?)/gi;
+  for (const m of text.matchAll(bareRe)) {
+    const bare = cleanUrl(m[1]);
+    const host = bare.split('/')[0].replace(/^www\./, '');
+    if (
+      NETDISK_HOSTS.some((h) => host.includes(h)) ||
+      CODE_HOSTS.some((h) => host.includes(h))
+    ) {
+      push('https://' + bare);
+    }
+  }
+  return result;
 }
 
 /** 识别链接类型 */
@@ -118,10 +158,18 @@ export function classifyLink(url: string): ParsedLink['type'] {
   return 'other';
 }
 
-/** 从链接文本中提取网盘提取码（常见格式：提取码/密码 xxxx） */
+/** 从链接文本中提取网盘提取码（常见格式：提取码/密码/访问码/解压码 xxxx） */
 export function extractPassword(text: string, url: string): string | undefined {
-  const match = text.match(/(?:提取码|密码|pwd|code)[:：\s]*([0-9A-Za-z]{4,8})/i);
-  if (match) return match[1];
+  const patterns = [
+    /(?:提取码|提取密码|访问码|解压码|密码)[:：\s]*([0-9A-Za-z]{4,8})/i,
+    /\bpwd\s*[:：=]?\s*([0-9A-Za-z]{4,8})/i,
+    /\bcode\s*[:：=]?\s*([0-9A-Za-z]{4,8})/i,
+    /[码]\s*[:：]\s*([0-9A-Za-z]{4,8})/i,
+  ];
+  for (const p of patterns) {
+    const match = text.match(p);
+    if (match) return match[1];
+  }
   const hash = new URL(url).hash;
   const hashMatch = hash.match(/[0-9A-Za-z]{4,8}$/);
   return hashMatch ? hashMatch[0] : undefined;
@@ -140,7 +188,7 @@ export async function parseBilibili(
   const info = await fetchVideoInfo(bvid);
   onStatus?.('获取视频信息');
   const comments = await fetchHotComments(info.aid);
-  onStatus?.('拉取热评');
+  onStatus?.('分页拉取热评与回复');
 
   const texts = [info.desc, ...comments];
   const rawUrls = texts.flatMap(extractUrls);
@@ -207,6 +255,18 @@ export async function fetchCodeFromLink(
     const code = await fetchGitHubCode(link.url, onStatus);
     onStatus?.('获取 GitHub 代码');
     return code;
+  }
+  if (isGiteeUrl(link.url)) {
+    onStatus?.('连接 Gitee…');
+    const code = await fetchGiteeCode(link.url, onStatus);
+    onStatus?.('获取 Gitee 代码');
+    return { html: code.html, css: code.css, js: code.js, source: code.source };
+  }
+  if (isGitlabUrl(link.url)) {
+    onStatus?.('连接 GitLab…');
+    const code = await fetchGitlabCode(link.url, onStatus);
+    onStatus?.('获取 GitLab 代码');
+    return { html: code.html, css: code.css, js: code.js, source: code.source };
   }
   if (isNetdiskUrl(link.url)) {
     onStatus?.('解析网盘直链…');

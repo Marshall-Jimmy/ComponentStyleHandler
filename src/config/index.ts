@@ -35,8 +35,8 @@ export const BILIBILI = {
   viewApi: 'https://api.bilibili.com/x/web-interface/view',
   /** 热评 API（旧版 x/v2/reply 免 WBI 签名，风控更宽松） */
   replyApi: 'https://api.bilibili.com/x/v2/reply',
-  /** 热评数量 */
-  replyCount: 20,
+  /** 热评数量（分页拉取，含子回复，适当放宽以覆盖更多隐藏链接） */
+  replyCount: 60,
   /** 同源反向代理前缀（Vite dev/preview 已配置 /bili-api → api.bilibili.com，无 CORS 限制） */
   proxyPrefix: '/bili-api',
 };
@@ -122,6 +122,8 @@ export const CODE_HOSTS = [
   'gist.github.com',
   'stackblitz.com',
   'codesandbox.io',
+  'gitee.com',
+  'gitlab.com',
 ];
 
 /** 网盘直链解析端点 */
