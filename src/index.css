@@ -59,6 +59,9 @@ a[href],
 select:not(:disabled),
 summary {
   cursor: pointer;
+  /* 消除移动端 300ms 点击延迟（Apple：kill latency） */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -137,6 +140,8 @@ body {
 .micro-btn:active {
   transform: scale(0.96) translateY(0);
   box-shadow: none;
+  /* 按下即时反馈（Apple：反馈发生在 pointer-down，而非释放时） */
+  transition-duration: 0.1s;
 }
 
 /* 纯图标按钮：hover 放大 + 高亮，active 收缩 */
@@ -145,6 +150,7 @@ body {
 }
 .micro-icon-btn:active {
   transform: scale(0.9);
+  transition-duration: 0.1s;
 }
 
 /* 卡片：hover 抬升 + 边框强调 + 琥珀辉光 */
@@ -164,6 +170,10 @@ body {
     var(--shadow-elevation-2),
     0 0 0 1px var(--color-accent-soft),
     0 14px 36px rgba(0, 0, 0, 0.4);
+}
+.micro-card:active {
+  transform: translateY(-1px) scale(0.99);
+  transition-duration: 0.1s;
 }
 
 /* 列表项 / 文件行：hover 轻微右移 + 琥珀边框 */
@@ -296,5 +306,23 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* 尊重系统减少透明设置：关闭毛玻璃，避免半透明材质干扰（Apple：prefers-reduced-transparency） */
+@media (prefers-reduced-transparency: reduce) {
+  *,
+  *::before,
+  *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* 高对比度：强化边框，保证可辨识度（Apple：prefers-contrast） */
+@media (prefers-contrast: more) {
+  :root {
+    --color-border: #4a453f;
+    --color-border-strong: #5a544c;
   }
 }

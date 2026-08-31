@@ -14,6 +14,8 @@ export const ANIMATION = {
   cardEntry: 400,
   /** Toast 显示时长（ms） */
   toastDuration: 2400,
+  /** Toast 退场动画时长（ms） */
+  toastExitDuration: 240,
 };
 
 export const TIMEOUT = {

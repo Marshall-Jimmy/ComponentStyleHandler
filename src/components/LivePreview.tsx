@@ -121,15 +121,27 @@ export function LivePreview({ component }: LivePreviewProps) {
     };
   }, [fullscreen]);
 
-  // 宽组件（内容宽超出预览区）：等比缩放到预览区内完整显示，避免右侧被裁切
-  const needScale = boxWidth > 0 && contentWidth > boxWidth && contentHeight > 0;
-  const scale = needScale ? Math.min(boxWidth / contentWidth, PREVIEW_HEIGHT / contentHeight) : 1;
-  const iframeW = needScale ? contentWidth : boxWidth;
+  // 全屏式组件（viewport 标记）：按固定视口渲染，再缩略图等比缩放到预览区；
+  // 普通组件：宽组件等比缩放，超高页面顶部对齐裁掉底部
+  const viewport = component.viewport;
+  const vw = viewport?.width ?? 0;
+  const vh = viewport?.height ?? 0;
+  const isViewport = vw > 0 && vh > 0;
+  const needScale = !isViewport && boxWidth > 0 && contentWidth > boxWidth && contentHeight > 0;
+  const scale = isViewport
+    ? boxWidth > 0
+      ? Math.min(boxWidth / vw, PREVIEW_HEIGHT / vh)
+      : 1
+    : needScale
+      ? Math.min(boxWidth / contentWidth, PREVIEW_HEIGHT / contentHeight)
+      : 1;
+  const iframeW = isViewport ? vw : needScale ? contentWidth : boxWidth;
+  const iframeH = isViewport ? vh : contentHeight;
   const dispW = iframeW * scale;
-  const dispH = contentHeight * scale;
+  const dispH = iframeH * scale;
   // 全页式组件（body 100vh）在固定 240px 高度内由自身布局居中填满；
   // 缩放/内容不超高时垂直居中，超高内容顶部对齐裁掉底部
-  const alignCenter = needScale || contentHeight <= PREVIEW_HEIGHT;
+  const alignCenter = isViewport || needScale || contentHeight <= PREVIEW_HEIGHT;
 
   return (
     <>
@@ -177,14 +189,14 @@ export function LivePreview({ component }: LivePreviewProps) {
         srcDoc &&
         createPortal(
           <div
-            className="fixed inset-0 z-50 bg-black/80 p-2 backdrop-blur-sm sm:p-4"
+            className="fixed inset-0 z-50 animate-fadeIn bg-black/80 p-2 backdrop-blur-sm sm:p-4"
             onClick={() => setFullscreen(false)}
             role="dialog"
             aria-modal="true"
             aria-label={`${component.name} 全屏预览`}
           >
             <div
-              className="flex h-full w-full flex-col overflow-hidden border border-border bg-bg shadow-elevation2"
+              className="flex h-full w-full animate-scaleIn flex-col overflow-hidden border border-border bg-bg shadow-elevation2"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-border px-3 py-2">

@@ -25,7 +25,7 @@ export function Toast({ toasts, onDismiss }: ToastProps) {
         <div
           key={t.id}
           role="status"
-          className={`group pointer-events-auto flex items-center gap-2.5 border border-border bg-surface2 px-4 py-2.5 text-sm text-primary shadow-elevation2 animate-toastIn transition-[border-color,box-shadow] duration-300 hover:border-accent/40 ${STYLES[t.type].ring}`}
+          className={`group pointer-events-auto flex items-center gap-2.5 border border-border bg-surface2 px-4 py-2.5 text-sm text-primary shadow-elevation2 transition-[border-color,box-shadow] duration-300 hover:border-accent/40 ${t.leaving ? 'animate-toastOut' : 'animate-toastIn'} ${STYLES[t.type].ring}`}
         >
           <span className="transition-transform duration-300 group-hover:scale-110">
             {STYLES[t.type].icon}

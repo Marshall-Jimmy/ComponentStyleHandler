@@ -29,7 +29,7 @@ export default function App() {
     dismissDbError,
   } = useComponents();
 
-  const { toasts, pushToast, removeToast } = useToast();
+  const { toasts, pushToast, dismissToast } = useToast();
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, TIMEOUT.searchDebounce);
@@ -229,7 +229,7 @@ export default function App() {
         }}
         onCancel={() => setDeleteTarget(null)}
       />
-      <Toast toasts={toasts} onDismiss={removeToast} />
+      <Toast toasts={toasts} onDismiss={dismissToast} />
 
       {fatalError && (
         <ErrorBanner

@@ -78,6 +78,20 @@ export function splitHtmlCode(source: string): { html: string; css: string; js: 
 /** 临时/废弃目录，合集导入时自动跳过 */
 const TEMP_DIR_RE = /(^|\/)(临时|temp|tmp|backup|备份|old|test|测试)(\/|$)/i;
 
+/** 需要以 base64 内联的栅格图片扩展名（SVG 走文本 data URI） */
+const RASTER_RE = /\.(webp|png|jpe?g|gif|avif)$/i;
+
+/** ArrayBuffer → base64（浏览器与 Node 通用，分块避免栈溢出） */
+export function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
 /** 仓库中的一个组件 Demo */
 export interface RepoDemo {
   /** 组件名（目录名，根目录为 index） */
@@ -124,13 +138,16 @@ export function collectDemos(files: Array<{ path: string; type: string; size?: n
 
 /**
  * 抓取 Demo 的 index.html 并把外部资源内联为自包含代码：
- * 外部 <link rel=stylesheet> → CSS，外部 <script src> → JS，<img> 与 CSS url() 的 svg → data URI
+ * 外部 <link rel=stylesheet> → CSS，外部 <script src> → JS，
+ * <img> / CSS url() / data-* 属性的 svg → 文本 data URI，webp/png/jpg 等栅格图 → base64 data URI
  * @param fetchText 按仓库内路径取原始文本（html/css/js/svg 等）
+ * @param fetchBase64 按仓库内路径取栅格图片的 base64（webp/png/jpg 等；缺省则不内联栅格图）
  */
 export async function inlineDemoAssets(
   html: string,
   dirPath: string,
   fetchText: (repoPath: string) => Promise<string>,
+  fetchBase64?: (repoPath: string) => Promise<string>,
 ): Promise<{ html: string; css: string; js: string }> {
   /** 把相对引用解析为仓库内路径（支持 ./ 与 ../） */
   const resolveIn = (baseDir: string, ref: string): string | null => {
@@ -168,14 +185,24 @@ export async function inlineDemoAssets(
     const m = tag.match(/src\s*=\s*["']([^"']+)["']/i);
     if (m) collect(dirPath, m[1], 'asset');
   }
+  // data-* 属性里指向图片的相对路径（如 data-fluid-image="../assets/bg.webp"）
+  for (const m of html.matchAll(/\bdata-[\w-]+\s*=\s*["']([^"']+)["']/gi)) {
+    const p = resolveIn(dirPath, m[1]);
+    if (p && RASTER_RE.test(p)) tasks.set(p, 'asset');
+  }
 
   // 抓取所有任务内容（并行）
   const contents = new Map<string, string>();
+  const assetBase64 = new Map<string, string>();
   const failures = new Map<string, TaskKind>();
   await Promise.all(
     [...tasks.keys()].map(async (p) => {
       try {
-        contents.set(p, await fetchText(p));
+        if (tasks.get(p) === 'asset' && RASTER_RE.test(p) && fetchBase64) {
+          assetBase64.set(p, await fetchBase64(p));
+        } else {
+          contents.set(p, await fetchText(p));
+        }
       } catch {
         failures.set(p, tasks.get(p)!);
       }
@@ -187,8 +214,9 @@ export async function inlineDemoAssets(
     throw new Error(`外部样式 ${missingCss[0]} 抓取失败，无法内联，已中止导入`);
   }
 
-  // CSS 内的 url() 引用也要内联（svg 资源）
+  // CSS 内的 url() 引用也要内联（svg 文本 / 栅格 base64）
   const cssUrlExtra = new Map<string, string>();
+  const cssUrlBase64 = new Map<string, string>();
   await Promise.all(
     [...tasks.entries()]
       .filter(([, kind]) => kind === 'css')
@@ -198,9 +226,13 @@ export async function inlineDemoAssets(
         const cssDir = p.split('/').slice(0, -1).join('/');
         for (const m of css.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g)) {
           const rp = resolveIn(cssDir, m[2]);
-          if (!rp || tasks.has(rp) || cssUrlExtra.has(rp)) continue;
+          if (!rp || tasks.has(rp) || cssUrlExtra.has(rp) || cssUrlBase64.has(rp)) continue;
           try {
-            cssUrlExtra.set(rp, await fetchText(rp));
+            if (RASTER_RE.test(rp) && fetchBase64) {
+              cssUrlBase64.set(rp, await fetchBase64(rp));
+            } else {
+              cssUrlExtra.set(rp, await fetchText(rp));
+            }
           } catch {
             /* 忽略 */
           }
@@ -210,8 +242,10 @@ export async function inlineDemoAssets(
 
   const dataUri = (text: string): string =>
     `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`;
+  const rasterUri = (p: string, b64: string): string =>
+    `data:image/${p.match(/\.(\w+)$/i)?.[1].toLowerCase() ?? 'png'};base64,${b64}`;
 
-  // 重组 HTML：移除已内联的外部 link/script，img 的 svg 转 data URI
+  // 重组 HTML：移除已内联的外部 link/script，img 与 data-* 的图片转 data URI
   let htmlOut = html.replace(/<link\b[^>]*>/gi, (tag) => {
     const href = tag.match(/href\s*=\s*["']([^"']+)["']/i)?.[1];
     const rel = tag.match(/rel\s*=\s*["']([^"']+)["']/i)?.[1];
@@ -226,10 +260,22 @@ export async function inlineDemoAssets(
     const src = tag.match(/src\s*=\s*["']([^"']+)["']/i)?.[1];
     const rp = src ? resolveIn(dirPath, src) : null;
     const txt = rp ? contents.get(rp) : undefined;
+    const b64 = rp ? assetBase64.get(rp) : undefined;
     if (rp && txt !== undefined && /\.svg$/i.test(rp)) {
       return tag.replace(/src\s*=\s*["'][^"']*["']/i, `src="${dataUri(txt)}"`);
     }
+    if (rp && b64 !== undefined && RASTER_RE.test(rp)) {
+      return tag.replace(/src\s*=\s*["'][^"']*["']/i, `src="${rasterUri(rp, b64)}"`);
+    }
     return tag;
+  });
+  htmlOut = htmlOut.replace(/\bdata-[\w-]+\s*=\s*["']([^"']+)["']/gi, (full, val) => {
+    const rp = resolveIn(dirPath, val);
+    const txt = rp ? contents.get(rp) : undefined;
+    const b64 = rp ? assetBase64.get(rp) : undefined;
+    if (rp && txt !== undefined && /\.svg$/i.test(rp)) return full.replace(val, dataUri(txt));
+    if (rp && b64 !== undefined && RASTER_RE.test(rp)) return full.replace(val, rasterUri(rp, b64));
+    return full;
   });
 
   // 汇总 CSS / JS（外部 + 内联拆分）
@@ -243,7 +289,9 @@ export async function inlineDemoAssets(
       css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (_full, _q, ref) => {
         const rp = resolveIn(cssDir, ref);
         const txt = rp ? (cssUrlExtra.get(rp) ?? contents.get(rp)) : undefined;
+        const b64 = rp ? cssUrlBase64.get(rp) : undefined;
         if (rp && txt !== undefined && /\.svg$/i.test(rp)) return `url("${dataUri(txt)}")`;
+        if (rp && b64 !== undefined && RASTER_RE.test(rp)) return `url("${rasterUri(rp, b64)}")`;
         return _full;
       }).trim(),
     );

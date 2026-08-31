@@ -18,6 +18,8 @@ export interface Component {
   css: string;
   /** JavaScript 代码（仅作字符串存储） */
   js: string;
+  /** 全屏式组件（如 100vh 动效实验）：卡片预览时按此固定视口渲染并缩略图缩放 */
+  viewport?: { width: number; height: number };
   /** 创建时间戳 */
   createdAt: number;
   /** 更新时间戳 */
@@ -39,6 +41,8 @@ export interface ToastMessage {
   id: string;
   type: 'success' | 'error' | 'info';
   text: string;
+  /** 正在退场（用于对称退场动画，Apple：空间一致性） */
+  leaving?: boolean;
 }
 
 /** AI 配置 */

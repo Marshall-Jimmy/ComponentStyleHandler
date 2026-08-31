@@ -1,4 +1,5 @@
 import type { Component } from '../types';
+import { MOHUI_COMPONENTS } from './mohui';
 
 /**
  * 预设示例组件
@@ -72,4 +73,5 @@ input.addEventListener('change', () => {
   status.textContent = input.checked ? '已开启' : '已关闭';
 });`,
   },
+  ...MOHUI_COMPONENTS,
 ];

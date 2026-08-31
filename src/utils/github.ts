@@ -6,6 +6,7 @@ import {
   splitHtmlCode,
   inlineDemoAssets,
   collectDemos,
+  arrayBufferToBase64,
   README_CANDIDATES,
 } from './codeUtils';
 import type { HostCode, HostStatus, RepoCollection, RepoDemo } from './codeUtils';
@@ -182,7 +183,14 @@ export async function fetchGitHubCode(url: string, onStatus?: GithubStatus): Pro
           `${GITHUB.rawHost}/${path.owner}/${path.repo}/${path.ref}/${encodeURIComponent(p)}`,
           onStatus,
         );
-      const inline = await inlineDemoAssets(text, dirPath, fetchText);
+      const fetchBase64 = async (p: string) => {
+        const res = await githubFetch(
+          `${GITHUB.rawHost}/${path.owner}/${path.repo}/${path.ref}/${encodeURIComponent(p)}`,
+          onStatus,
+        );
+        return arrayBufferToBase64(await res.arrayBuffer());
+      };
+      const inline = await inlineDemoAssets(text, dirPath, fetchText, fetchBase64);
       return {
         html: inline.html,
         css: inline.css,
@@ -318,8 +326,15 @@ export async function fetchGithubDemo(
   onStatus?.(`抓取 ${demo.name}`);
   const fetchText = (p: string) =>
     fetchGithubText(`${GITHUB.rawHost}/${owner}/${repo}/${ref}/${encodeURIComponent(p)}`, onStatus);
+  const fetchBase64 = async (p: string) => {
+    const res = await githubFetch(
+      `${GITHUB.rawHost}/${owner}/${repo}/${ref}/${encodeURIComponent(p)}`,
+      onStatus,
+    );
+    return arrayBufferToBase64(await res.arrayBuffer());
+  };
   const html = await fetchText(demo.path);
   const dirPath = demo.path.split('/').slice(0, -1).join('/');
-  const inline = await inlineDemoAssets(html, dirPath, fetchText);
+  const inline = await inlineDemoAssets(html, dirPath, fetchText, fetchBase64);
   return { html: inline.html, css: inline.css, js: inline.js, source: `${owner}/${repo}/${demo.path}` };
 }

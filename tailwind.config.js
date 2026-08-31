@@ -57,6 +57,7 @@ export default {
         scaleIn: 'scaleIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) both',
         spin: 'spin 0.8s linear infinite',
         toastIn: 'toastIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) both',
+        toastOut: 'toastOut 0.24s cubic-bezier(0.4, 0, 0.2, 1) both',
       },
     },
   },
