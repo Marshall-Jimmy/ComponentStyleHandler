@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>卡片预览优化总结 · ComponentStyleHandler</title>
+<style>
+  :root {
+    --bg: #0b0b0c;
+    --surface-1: #151412;
+    --surface-2: #1f1d1a;
+    --surface-3: #2a2723;
+    --border: #262320;
+    --border-strong: #3a3631;
+    --text-primary: #f7f3ea;
+    --text-secondary: #a8a29a;
+    --text-tertiary: #6b6660;
+    --accent: #e6b450;
+    --accent-hover: #f0c36a;
+    --accent-soft: rgba(230, 180, 80, 0.12);
+    --success: #34d399;
+    --info: #22d3ee;
+    --danger: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    line-height: 1.6;
+    padding: 48px 24px 80px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header.hero { margin-bottom: 40px; }
+  .eyebrow {
+    display: inline-block;
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--border-strong);
+    padding: 4px 12px; border-radius: 999px;
+    margin-bottom: 16px;
+  }
+  h1 { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 12px; }
+  .sub { color: var(--text-secondary); font-size: 15px; max-width: 720px; }
+  h2 {
+    font-size: 20px; font-weight: 600; margin: 40px 0 16px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 24px 0; }
+  .stat {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px;
+  }
+  .stat .num { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .stat .label { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+  .algo {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; margin-bottom: 16px;
+  }
+  .algo h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .algo p { color: var(--text-secondary); font-size: 14px; }
+  .algo code {
+    background: var(--surface-3); color: var(--accent-hover);
+    padding: 1px 6px; border-radius: 4px; font-size: 13px;
+    font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 24px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text-secondary);
+    border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px;
+    background: var(--surface-1);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.seed { background: #f87171; }
+  .dot.drag { background: #22d3ee; }
+  .dot.hover { background: #34d399; }
+  .dot.follow { background: #a78bfa; }
+  .dot.scroll { background: #fbbf24; }
+  .dot.auto { background: #6b6660; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th {
+    text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-tertiary); padding: 10px 12px; border-bottom: 1px solid var(--border-strong);
+  }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: var(--surface-1); }
+  .idx { color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .name { font-weight: 500; white-space: nowrap; }
+  .type-badge {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--border-strong); white-space: nowrap;
+  }
+  .type-badge.seed { color: #f87171; background: rgba(248,113,113,0.1); }
+  .type-badge.drag { color: #22d3ee; background: rgba(34,211,238,0.1); }
+  .type-badge.hover { color: #34d399; background: rgba(52,211,153,0.1); }
+  .type-badge.follow { color: #a78bfa; background: rgba(167,139,250,0.1); }
+  .type-badge.scroll { color: #fbbf24; background: rgba(251,191,36,0.1); }
+  .type-badge.auto { color: #a8a29a; background: rgba(168,162,154,0.1); }
+  .tags { color: var(--text-tertiary); font-size: 12px; }
+  .note { color: var(--text-secondary); font-size: 13px; }
+  .note b { color: var(--accent-hover); font-weight: 500; }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-tertiary); font-size: 13px; }
+  @media (max-width: 720px) {
+    body { padding: 24px 12px 60px; }
+    h1 { font-size: 24px; }
+    .hide-sm { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <span class="eyebrow">Preview Optimization Report</span>
+    <h1>卡片预览优化总结</h1>
+    <p class="sub">
+      对 44 个 mohui 动效实验卡片逐一查看与优化。核心思路是把"人工逐个调优卡片"的过程算法化：
+      静态分析每个组件的代码，自动推导交互类型，再注入针对性的自动交互脚本，让每张卡片在 240px 预览区内展示出最具代表性的动效。
+    </p>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><div class="num">44</div><div class="label">动效实验卡片</div></div>
+    <div class="stat"><div class="num">6</div><div class="label">交互类型</div></div>
+    <div class="stat"><div class="num">5</div><div class="label">算法维度</div></div>
+    <div class="stat"><div class="num">100%</div><div class="label">脚本注入覆盖</div></div>
+  </div>
+
+  <h2>优化算法</h2>
+  <div class="algo">
+    <h3>1. 交互类型分类</h3>
+    <p>
+      通过正则静态分析每个组件的 <code>js</code>，识别事件监听模式，归类为
+      <b style="color:#f87171">seed（反应播种）</b>、
+      <b style="color:#22d3ee">drag（拖拽平移/物理）</b>、
+      <b style="color:#34d399">hover（磁贴悬停）</b>、
+      <b style="color:#a78bfa">follow（指针跟随）</b>、
+      <b style="color:#fbbf24">scroll（滚动驱动）</b>、
+      <b style="color:#a8a29a">auto（自动动画）</b> 六类。
+    </p>
+  </div>
+  <div class="algo">
+    <h3>2. 针对性交互脚本</h3>
+    <p>
+      每类组件注入不同的自动交互序列：seed 类在 5 个点位按下播种（单点只在中心产生一小团反应，多点让效果铺满画面）；
+      drag 类按住后大幅拖拽展示平移/物理效果；hover 类指针扫掠并<b>手动模拟 <code>pointerenter/leave</code></b>（合成事件不会自动派发，否则磁贴悬停揭示无法触发）；
+      scroll 类滚动到内容中部；follow/auto 类指针扫掠触发流场与拖尾。
+    </p>
+  </div>
+  <div class="algo">
+    <h3>3. 取景与缩放</h3>
+    <p>
+      全部 44 个实验均为 1920×1080 全屏式组件（<code>viewport</code> 标记），按固定视口渲染后以
+      <code>cover</code> 方式等比缩放填充 240px 预览区，居中裁切溢出部分，保证动效主体始终居中、无黑边。
+    </p>
+  </div>
+
+  <h2>分类统计</h2>
+  <div class="legend">
+    <span class="chip"><span class="dot seed"></span>seed 播种 · 8</span>
+    <span class="chip"><span class="dot drag"></span>drag 拖拽 · 19</span>
+    <span class="chip"><span class="dot hover"></span>hover 悬停 · 12</span>
+    <span class="chip"><span class="dot follow"></span>follow 跟随 · 3</span>
+    <span class="chip"><span class="dot scroll"></span>scroll 滚动 · 1</span>
+    <span class="chip"><span class="dot auto"></span>auto 自动 · 1</span>
+  </div>
+
+  <h2>逐卡片查看与总结</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>名称</th>
+        <th>类型</th>
+        <th class="hide-sm">技术</th>
+        <th class="hide-sm">标签</th>
+        <th>展示效果与优化说明</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="idx">1</td><td class="name">残像反馈</td><td><span class="type-badge seed">seed</span></td><td class="hide-sm">canvas</td><td class="tags">指针交互</td><td class="note">帧反馈残影。原单点播种只在中心产生一小团，现<b>5 点播种</b>，残像铺满画面更醒目。</td></tr>
+      <tr><td class="idx">2</td><td class="name">多物体碰撞与投掷</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">canvas</td><td class="tags">碰撞</td><td class="note">物理碰撞。按住拖拽移动物体，展示投掷与碰撞轨迹。</td></tr>
+      <tr><td class="idx">3</td><td class="name">CSS 运动路径</td><td><span class="type-badge hover">hover</span></td><td class="hide-sm">dom</td><td class="tags">交互控制</td><td class="note">悬停触发路径动画。指针扫掠 + <b>pointerenter 模拟</b>，元素沿路径运动。</td></tr>
+      <tr><td class="idx">4</td><td class="name">方向感知跑马灯</td><td><span class="type-badge hover">hover</span></td><td class="hide-sm">dom</td><td class="tags">悬停</td><td class="note">从左右进入文字带触发流向。扫掠路径横穿文字带，触发方向感知。</td></tr>
+      <tr><td class="idx">5</td><td class="name">方向感知悬停揭示</td><td><span class="type-badge hover">hover</span></td><td class="hide-sm">dom</td><td class="tags">悬停</td><td class="note">磁贴按进入方向揭示。pointerenter 模拟确保磁贴被点亮。</td></tr>
+      <tr><td class="idx">6</td><td class="name">拖拽驱动视差轮播</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">dom</td><td class="tags">拖拽</td><td class="note">拖拽平移视差场。按住大幅拖拽，视差分层随之位移。</td></tr>
+      <tr><td class="idx">7</td><td class="name">弹性边界与撞墙回弹</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">canvas</td><td class="tags">弹性</td><td class="note">物体撞墙回弹。拖拽移动物体，展示弹性边界约束。</td></tr>
+      <tr><td class="idx">8</td><td class="name">FLIP 布局转场</td><td><span class="type-badge hover">hover</span></td><td class="hide-sm">dom</td><td class="tags">点击</td><td class="note">悬停/点击触发布局 FLIP。扫掠触发卡片重排动画。</td></tr>
+      <tr><td class="idx">9</td><td class="name">交互式流体扭曲</td><td><span class="type-badge follow">follow</span></td><td class="hide-sm">canvas</td><td class="tags">指针交互</td><td class="note">指针拖动扭曲流体。扫掠路径制造流动轨迹。</td></tr>
+      <tr><td class="idx">10</td><td class="name">全屏十字准星</td><td><span class="type-badge hover">hover</span></td><td class="hide-sm">dom</td><td class="tags">指针交互</td><td class="note">指针移动驱动准星。扫掠展示准星跟随。</td></tr>
+      <tr><td class="idx">11</td><td class="name">全屏扩展转场</td><td><span class="type-badge follow">follow</span></td><td class="hide-sm">canvas</td><td class="tags">滚动</td><td class="note">指针轨迹扩展流场。扫掠捕捉轨迹，流场铺开。</td></tr>
+      <tr><td class="idx">12</td><td class="name">GPU 程序化粒子流场</td><td><span class="type-badge seed">seed</span></td><td class="hide-sm">canvas</td><td class="tags">指针交互</td><td class="note">GPU 粒子流场。5 点播种让粒子流场多点爆发。</td></tr>
+      <tr><td class="idx">13</td><td class="name">纵向滚动驱动横向轨道</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">dom</td><td class="tags">滚动</td><td class="note">纵向滚动驱动横向轨道。拖拽平移轨道展示联动。</td></tr>
+      <tr><td class="idx">14</td><td class="name">图像运动拖尾</td><td><span class="type-badge auto">auto</span></td><td class="hide-sm">dom</td><td class="tags">指针交互</td><td class="note">指针移动留下拖尾。扫掠路径形成连贯拖尾轨迹。</td></tr>
+      <tr><td class="idx">15</td><td class="name">惯性拖拽</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">dom</td><td class="tags">拖拽</td><td class="note">拖拽带惯性滑行。大幅拖拽后展示惯性减速。</td></tr>
+      <tr><td class="idx">16</td><td class="name">惯性预测与网格吸附</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">canvas</td><td class="tags">吸附</td><td class="note">拖拽后预测落点并吸附网格。拖拽展示吸附过程。</td></tr>
+      <tr><td class="idx">17</td><td class="name">无限可平移画布</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">dom</td><td class="tags">拖拽</td><td class="note">无限画布平移。拖拽展示无缝平移。</td></tr>
+      <tr><td class="idx">18</td><td class="name">动态排版</td><td><span class="type-badge scroll">scroll</span></td><td class="hide-sm">dom</td><td class="tags">滚动</td><td class="note">滚动控制文字速度与重排。滚动到内容中部，展示章节转场。</td></tr>
+      <tr><td class="idx">19</td><td class="name">分层推镜滚动</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">dom</td><td class="tags">滚动</td><td class="note">分层视差推镜。拖拽平移展示景深分层。</td></tr>
+      <tr><td class="idx">20</td><td class="name">WebGL 透镜折射</td><td><span class="type-badge seed">seed</span></td><td class="hide-sm">canvas</td><td class="tags">指针交互</td><td class="note">WebGL 透镜折射。5 点播种制造多个折射光斑。</td></tr>
+      <tr><td class="idx">21</td><td class="name">磁吸光标</td><td><span class="type-badge hover">hover</span></td><td class="hide-sm">dom</td><td class="tags">指针交互</td><td class="note">光标磁吸磁贴。扫掠 + pointerenter 模拟触发磁吸。</td></tr>
+      <tr><td class="idx">22</td><td class="name">距离磁力与停靠锁定</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">canvas</td><td class="tags">磁力</td><td class="note">拖拽物体受磁力吸引并停靠锁定。拖拽展示磁力作用。</td></tr>
+      <tr><td class="idx">23</td><td class="name">融球 / 黏性融合</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">canvas</td><td class="tags">指针交互</td><td class="note">拖拽拉出黏性融球。按住拖拽展示融球拉伸融合。</td></tr>
+      <tr><td class="idx">24</td><td class="name">速度采样与动量投掷</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">canvas</td><td class="tags">动量</td><td class="note">拖拽采样速度并投掷。快速拖拽展示动量投掷。</td></tr>
+      <tr><td class="idx">25</td><td class="name">三维形态目标动画</td><td><span class="type-badge seed">seed</span></td><td class="hide-sm">canvas</td><td class="tags">点击</td><td class="note">点击播种形态反应。5 点播种制造多点形态变化。</td></tr>
+      <tr><td class="idx">26</td><td class="name">轨道约束与角动量</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">canvas</td><td class="tags">轨道</td><td class="note">拖拽物体沿轨道运动。拖拽展示轨道约束。</td></tr>
+      <tr><td class="idx">27</td><td class="name">视差深度滚动</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">dom</td><td class="tags">滚动</td><td class="note">拖拽平移视差深度场。大幅拖拽展示景深位移。</td></tr>
+      <tr><td class="idx">28</td><td class="name">弹簧让位式拖拽重排</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">canvas</td><td class="tags">重排</td><td class="note">拖拽物体让位重排。拖拽展示弹簧让位动画。</td></tr>
+      <tr><td class="idx">29</td><td class="name">反应–扩散模拟</td><td><span class="type-badge seed">seed</span></td><td class="hide-sm">canvas</td><td class="tags">指针交互</td><td class="note">反应扩散斑图。5 点播种让斑图多点生长。</td></tr>
+      <tr><td class="idx">30</td><td class="name">RGB 通道偏移与色差</td><td><span class="type-badge seed">seed</span></td><td class="hide-sm">canvas</td><td class="tags">指针交互</td><td class="note">指针产生 RGB 色差。5 点播种制造多处色散。</td></tr>
+      <tr><td class="idx">31</td><td class="name">绳段长度约束拖拽</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">canvas</td><td class="tags">约束</td><td class="note">拖拽绳段受长度约束。拖拽展示绳段摆动。</td></tr>
+      <tr><td class="idx">32</td><td class="name">渐进阻力与橡皮筋回弹</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">canvas</td><td class="tags">阻力</td><td class="note">拖拽受渐进阻力，松手橡皮筋回弹。拖拽展示回弹。</td></tr>
+      <tr><td class="idx">33</td><td class="name">滚动驱动三维卡片堆栈</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">dom</td><td class="tags">滚动</td><td class="note">拖拽平移三维卡片堆栈。拖拽展示卡片立体排列。</td></tr>
+      <tr><td class="idx">34</td><td class="name">滚动驱动场景切换</td><td><span class="type-badge follow">follow</span></td><td class="hide-sm">canvas</td><td class="tags">滚动</td><td class="note">指针轨迹驱动场景切换。扫掠制造轨迹流。</td></tr>
+      <tr><td class="idx">35</td><td class="name">滚动驱动 SVG 路径形变</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">dom</td><td class="tags">滚动</td><td class="note">拖拽平移驱动 SVG 路径形变。拖拽展示形变。</td></tr>
+      <tr><td class="idx">36</td><td class="name">距离场光线步进</td><td><span class="type-badge seed">seed</span></td><td class="hide-sm">canvas</td><td class="tags">WebGL</td><td class="note">WebGL 距离场渲染。5 点播种制造多点光源。</td></tr>
+      <tr><td class="idx">37</td><td class="name">共享元素视图转场</td><td><span class="type-badge hover">hover</span></td><td class="hide-sm">dom</td><td class="tags">点击</td><td class="note">悬停触发共享元素转场。扫掠触发元素过渡。</td></tr>
+      <tr><td class="idx">38</td><td class="name">分割文字蒙版揭示</td><td><span class="type-badge hover">hover</span></td><td class="hide-sm">dom</td><td class="tags">点击</td><td class="note">悬停分割文字蒙版揭示。扫掠触发文字揭示。</td></tr>
+      <tr><td class="idx">39</td><td class="name">二阶弹簧跟随拖拽</td><td><span class="type-badge drag">drag</span></td><td class="hide-sm">canvas</td><td class="tags">弹簧</td><td class="note">拖拽物体二阶弹簧跟随。拖拽展示弹性跟随。</td></tr>
+      <tr><td class="idx">40</td><td class="name">SVG 蒙版揭示</td><td><span class="type-badge hover">hover</span></td><td class="hide-sm">dom</td><td class="tags">指针交互</td><td class="note">悬停 SVG 蒙版揭示。扫掠触发蒙版展开。</td></tr>
+      <tr><td class="idx">41</td><td class="name">SVG 路径形变</td><td><span class="type-badge hover">hover</span></td><td class="hide-sm">dom</td><td class="tags">交互控制</td><td class="note">悬停 SVG 路径形变。扫掠触发路径变化。</td></tr>
+      <tr><td class="idx">42</td><td class="name">SVG 路径描边</td><td><span class="type-badge hover">hover</span></td><td class="hide-sm">dom</td><td class="tags">指针交互</td><td class="note">悬停 SVG 描边动画。扫掠触发描边绘制。</td></tr>
+      <tr><td class="idx">43</td><td class="name">倾斜悬停与指针视差</td><td><span class="type-badge hover">hover</span></td><td class="hide-sm">dom</td><td class="tags">指针交互</td><td class="note">悬停卡片倾斜视差。扫掠触发倾斜跟随。</td></tr>
+      <tr><td class="idx">44</td><td class="name">体积光束</td><td><span class="type-badge seed">seed</span></td><td class="hide-sm">canvas</td><td class="tags">指针交互</td><td class="note">指针产生体积光束。5 点播种制造多处光束。</td></tr>
+    </tbody>
+  </table>
+
+  <footer>
+    生成时间：2026-09-01 · 算法：previewProfile.ts 静态分析 + LivePreview 针对性交互注入 · 全部 44 卡片已覆盖
+  </footer>
+</div>
+</body>
+</html>

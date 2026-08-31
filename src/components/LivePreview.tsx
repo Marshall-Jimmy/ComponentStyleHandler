@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Component } from '../types';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
+import { getPreviewProfile, type InteractionMode, type PreviewProfile } from '../utils/previewProfile';
 import { LayersIcon, MaximizeIcon, MinimizeIcon } from '../utils/icons';
 
 interface LivePreviewProps {
@@ -15,8 +16,89 @@ const PREVIEW_HEIGHT = 240;
 const MAX_CONTENT_HEIGHT = 1200;
 const MIN_CONTENT_HEIGHT = 60;
 
+/** 按交互类型生成自动交互脚本：seed 多点播种 / drag 拖拽 / hover·follow 指针扫掠 / scroll 滚动 */
+function buildInteractBody(mode: InteractionMode, profile: PreviewProfile): string {
+  switch (mode) {
+    case 'seed':
+      // 多点按下播种，制造更丰富的反应（单点只会在中心产生一小团）
+      return `var seeds = [[0.5,0.5],[0.66,0.36],[0.34,0.64],[0.58,0.44],[0.42,0.56]];
+seeds.forEach(function (p, i) {
+  setTimeout(function () {
+    fire('pointerdown', w * p[0], h * p[1], 1);
+    setTimeout(function () { fire('pointerup', w * p[0], h * p[1], 0); }, 140);
+  }, t + i * 180);
+});`;
+    case 'drag':
+      // 按住后大幅拖拽，展示平移/物理效果
+      return `var x0 = w * 0.5, y0 = h * 0.5;
+fire('pointerdown', x0, y0, 1);
+var pts = [[0.28,0.5],[0.72,0.5],[0.5,0.28],[0.5,0.72],[0.5,0.5]];
+pts.forEach(function (p, i) {
+  setTimeout(function () { fire('pointermove', w * p[0], h * p[1], 1); }, t + i * 150);
+});
+setTimeout(function () { fire('pointerup', w * 0.5, h * 0.5, 0); }, t + pts.length * 150 + 120);`;
+    case 'scroll':
+      return `var max = Math.max(0, (document.body.scrollHeight || h) - h);
+if (max > 0) {
+  window.scrollTo(0, max * ${profile.scrollTarget});
+  window.dispatchEvent(new Event('scroll'));
+}`;
+    case 'hover':
+    case 'follow':
+    case 'auto':
+    default:
+      // 指针扫掠，触发磁贴悬停揭示 / 流场跟随 / 拖尾
+      return `var pts = [[0.5,0.5],[0.62,0.38],[0.38,0.62],[0.66,0.34],[0.34,0.66],[0.5,0.5]];
+pts.forEach(function (p, i) {
+  setTimeout(function () { fire('pointermove', w * p[0], h * p[1], 0); }, t + i * 130);
+});`;
+  }
+}
+
+/** 生成注入 iframe 的自动交互脚本 */
+function buildInteractScript(profile: PreviewProfile): string {
+  const body = buildInteractBody(profile.interaction, profile);
+  return `<script>
+(function () {
+  var lastEl = null;
+  function fire(type, x, y, buttons) {
+    var init = {
+      clientX: x, clientY: y, pointerType: 'mouse', isPrimary: true,
+      pointerId: 1, button: 0, buttons: buttons,
+      bubbles: true, cancelable: true
+    };
+    var evt;
+    try { evt = new PointerEvent(type, init); }
+    catch (e) { evt = new MouseEvent(type, init); }
+    window.dispatchEvent(evt);
+    document.dispatchEvent(evt);
+    var el = document.elementFromPoint(x, y);
+    if (el) {
+      el.dispatchEvent(evt);
+      // 合成事件不会自动派发 pointerenter/leave，这里手动模拟以触发磁贴悬停揭示
+      if (type === 'pointermove' && el !== lastEl) {
+        if (lastEl) lastEl.dispatchEvent(new PointerEvent('pointerleave', init));
+        el.dispatchEvent(new PointerEvent('pointerenter', init));
+        lastEl = el;
+      }
+    }
+  }
+  function run() {
+    var w = window.innerWidth || 1920;
+    var h = window.innerHeight || 1080;
+    var t = 200;
+    ${body}
+  }
+  if (document.readyState === 'complete') run();
+  else window.addEventListener('load', run);
+  setTimeout(run, 400);
+})();
+</script>`;
+}
+
 /** 构建注入 iframe 的 srcdoc */
 function buildSrcDoc(component: Component): string {
+  const profile = getPreviewProfile(component);
   const resizeScript = `
 <script>
 (function () {
@@ -50,6 +132,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 ${component.html}
 ${resizeScript}
 <script>${component.js}</script>
+${buildInteractScript(profile)}
 </body>
 </html>`;
 }
@@ -100,12 +183,15 @@ export function LivePreview({ component }: LivePreviewProps) {
         return;
       }
       if (iframeRef.current && event.source !== iframeRef.current.contentWindow) return;
+      // 全屏式组件（viewport 标记）固定视口渲染，忽略高度上报
+      const vp = component.viewport;
+      if (vp && vp.width > 0 && vp.height > 0) return;
       setContentHeight(Math.min(Math.max(data.height, MIN_CONTENT_HEIGHT), MAX_CONTENT_HEIGHT));
       setContentWidth(typeof data.width === 'number' && data.width > 0 ? data.width : 0);
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [component.id]);
+  }, [component.id, component.viewport]);
 
   // 全屏时 ESC 关闭 + 锁定外层滚动
   useEffect(() => {
@@ -121,7 +207,7 @@ export function LivePreview({ component }: LivePreviewProps) {
     };
   }, [fullscreen]);
 
-  // 全屏式组件（viewport 标记）：按固定视口渲染，再缩略图等比缩放到预览区；
+  // 全屏式组件（viewport 标记）：按固定视口渲染，再缩略图等比缩放填充预览区（cover，居中裁切溢出）；
   // 普通组件：宽组件等比缩放，超高页面顶部对齐裁掉底部
   const viewport = component.viewport;
   const vw = viewport?.width ?? 0;
@@ -130,7 +216,7 @@ export function LivePreview({ component }: LivePreviewProps) {
   const needScale = !isViewport && boxWidth > 0 && contentWidth > boxWidth && contentHeight > 0;
   const scale = isViewport
     ? boxWidth > 0
-      ? Math.min(boxWidth / vw, PREVIEW_HEIGHT / vh)
+      ? Math.max(boxWidth / vw, PREVIEW_HEIGHT / vh)
       : 1
     : needScale
       ? Math.min(boxWidth / contentWidth, PREVIEW_HEIGHT / contentHeight)
@@ -160,7 +246,7 @@ export function LivePreview({ component }: LivePreviewProps) {
                 ref={iframeRef}
                 title={`${component.name} 预览`}
                 className="block shrink-0 border-0 bg-transparent"
-                style={{ width: iframeW, height: contentHeight, transform: `scale(${scale})`, transformOrigin: 'top left' }}
+                style={{ width: iframeW, height: iframeH, transform: `scale(${scale})`, transformOrigin: 'top left' }}
                 sandbox="allow-scripts"
                 srcDoc={srcDoc}
                 loading="lazy"

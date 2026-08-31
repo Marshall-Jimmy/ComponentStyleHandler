@@ -43,7 +43,8 @@ export default function App() {
   // 全局错误捕获
   useEffect(() => {
     const onError = (event: ErrorEvent) => {
-      setFatalError(event.message || '发生未知错误');
+      const loc = event.filename ? ` @${event.filename.split('/').pop()}:${event.lineno}:${event.colno}` : '';
+      setFatalError((event.message || '发生未知错误') + loc);
     };
     const onRejection = (event: PromiseRejectionEvent) => {
       const reason = event.reason instanceof Error ? event.reason.message : '异步操作失败';
